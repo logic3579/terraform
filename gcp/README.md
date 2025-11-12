@@ -514,7 +514,41 @@ Error: The resource already exists
 **解决方案：**
 使用 `terraform import` 导入现有资源。
 
-#### 4. 实例需要重建（metadata_startup_script 变更）
+#### 4. Provider 插件缺失或损坏
+
+**错误信息：**
+```
+Error: missing or corrupted provider plugins
+- registry.terraform.io/hashicorp/google: there is no package ...
+- registry.terraform.io/hashicorp/local: there is no package ...
+```
+
+**原因：**
+- 首次执行 `terraform plan/apply` 前未运行 `terraform init`
+- `.terraform/` 目录被清理/损坏，导致缓存的 Provider 插件缺失
+- Provider 版本在 lock 文件中更新，但本地插件缓存未同步
+
+**解决步骤：**
+```bash
+# 1. 进入项目目录
+cd gcp/example-project
+
+# 2. 可选：清理旧的 Provider 缓存
+rm -rf .terraform
+
+# 3. 重新初始化，下载所需 Provider 插件
+terraform init -upgrade
+
+# 4. 验证
+terraform providers
+```
+
+**说明：**
+- `terraform init` 会根据 `.terraform.lock.hcl` 中锁定的版本下载并校验插件
+- 使用 `-upgrade` 可以在需要时更新已有插件缓存，确保与锁定版本一致
+- 如使用远程执行环境（CI/CD），必须在每次执行前运行 `terraform init`
+
+#### 5. 实例需要重建（metadata_startup_script 变更）
 
 **错误信息：**
 ```
@@ -547,7 +581,7 @@ lifecycle {
 - ✅ 保护已运行的实例不受启动脚本变更影响
 - ✅ 新实例仍会应用启动脚本
 
-#### 5. Load Balancer Health Check 失败
+#### 6. Load Balancer Health Check 失败
 
 **错误信息：**
 ```
@@ -585,7 +619,7 @@ firewall_rules = {
 gcloud compute backend-services get-health ortb-global-backend --global
 ```
 
-#### 6. Load Balancer Consistent Hash 配置错误
+#### 7. Load Balancer Consistent Hash 配置错误
 
 **错误信息：**
 ```
@@ -610,7 +644,7 @@ resource "google_compute_backend_service" "global_backend" {
 }
 ```
 
-#### 7. Forwarding Rule IP 配置冲突
+#### 8. Forwarding Rule IP 配置冲突
 
 **错误信息：**
 ```
@@ -631,7 +665,7 @@ resource "google_compute_global_forwarding_rule" "lb_forwarding_rule" {
 }
 ```
 
-#### 8. 权限不足
+#### 9. 权限不足
 
 **错误信息：**
 ```
