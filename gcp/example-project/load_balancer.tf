@@ -45,10 +45,11 @@ resource "google_compute_backend_service" "global_backend" {
   dynamic "backend" {
     for_each = var.lb_backends
     content {
-      group           = google_compute_instance_group.instance_groups[backend.value.instance_group_key].self_link
-      balancing_mode  = backend.value.balancing_mode
-      capacity_scaler = backend.value.capacity_scaler
-      max_utilization = backend.value.max_utilization
+      group                 = google_compute_instance_group.instance_groups[backend.value.instance_group_key].self_link
+      balancing_mode        = backend.value.balancing_mode
+      capacity_scaler       = backend.value.capacity_scaler
+      max_utilization       = backend.value.balancing_mode == "UTILIZATION" ? backend.value.max_utilization : null
+      max_rate_per_instance = backend.value.balancing_mode == "RATE" ? backend.value.max_rate_per_instance : null
     }
   }
 
@@ -137,10 +138,11 @@ resource "google_compute_backend_service" "global_backend_8000" {
   dynamic "backend" {
     for_each = var.lb_backends
     content {
-      group           = google_compute_instance_group.instance_groups[backend.value.instance_group_key].self_link
-      balancing_mode  = backend.value.balancing_mode
-      capacity_scaler = backend.value.capacity_scaler
-      max_utilization = backend.value.max_utilization
+      group                 = google_compute_instance_group.instance_groups[backend.value.instance_group_key].self_link
+      balancing_mode        = backend.value.balancing_mode
+      capacity_scaler       = backend.value.capacity_scaler
+      max_utilization       = backend.value.balancing_mode == "UTILIZATION" ? backend.value.max_utilization : null
+      max_rate_per_instance = backend.value.balancing_mode == "RATE" ? backend.value.max_rate_per_instance : null
     }
   }
 

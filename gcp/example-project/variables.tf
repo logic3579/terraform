@@ -160,10 +160,11 @@ variable "lb_health_check_name" {
 variable "lb_backends" {
   description = "Configuration for load balancer backends"
   type = map(object({
-    instance_group_key = string # Instance group key from instance_groups variable
-    balancing_mode     = optional(string, "UTILIZATION")
-    capacity_scaler    = optional(number, 1.0)
-    max_utilization    = optional(number, 0.8)
+    instance_group_key    = string # Instance group key from instance_groups variable
+    balancing_mode        = optional(string, "UTILIZATION")
+    capacity_scaler       = optional(number, 1.0)
+    max_utilization       = optional(number, 0.8)
+    max_rate_per_instance = optional(number) # Added max_rate_per_instance field
   }))
   default = {}
 }

@@ -393,7 +393,9 @@ lb_backends = {
 # lb_backends = {
 #   "backend-ew1" = {
 #     instance_group_key = "algorithm-ew1-group"
-#     balancing_mode     = "UTILIZATION"
+#     balancing_mode     = "RATE"
+#     max_rate_per_instance = 2000
+#     max_rate           = 2000
 #     capacity_scaler    = 1.0
 #     max_utilization    = 0.8
 #   }

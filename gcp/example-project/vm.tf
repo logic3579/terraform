@@ -86,9 +86,10 @@ resource "google_compute_instance" "vm_instance" {
       "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
       $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
     
-    # 更新包索引并安装 Docker
-    apt-get update
-    apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    # 更新包索引并安装指定版本 Docker
+    apt update
+    VERSION_STRING=5:28.5.1-1~ubuntu.22.04~jammy
+    apt install docker-ce=$VERSION_STRING docker-ce-cli=$VERSION_STRING containerd.io docker-buildx-plugin docker-compose-plugin
     
     # 启动并启用 Docker 服务
     systemctl start docker
