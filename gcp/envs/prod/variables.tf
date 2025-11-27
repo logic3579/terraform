@@ -3,6 +3,12 @@ variable "env" {
   type        = string
 }
 
+variable "labels" {
+  description = "Labels for this environment"
+  type        = map(string)
+  default     = {}
+}
+
 variable "project_id" {
   description = "GCP project ID"
   type        = string
@@ -67,10 +73,4 @@ variable "instance_groups" {
     instances = list(string)
   }))
   default = []
-}
-
-variable "base_labels" {
-  description = "Base labels for this environment"
-  type        = map(string)
-  default     = {}
 }

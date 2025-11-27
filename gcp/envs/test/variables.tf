@@ -3,8 +3,8 @@ variable "env" {
   type        = string
 }
 
-variable "base_labels" {
-  description = "Base labels for this environment"
+variable "labels" {
+  description = "Labels for this environment"
   type        = map(string)
   default     = {}
 }
@@ -21,6 +21,11 @@ variable "region" {
 
 variable "zone" {
   description = "Default GCE zone"
+  type        = string
+}
+
+variable "network_name" {
+  description = "VPC network name"
   type        = string
 }
 
@@ -68,6 +73,29 @@ variable "service_accounts" {
   type = list(object({
     account_id   = string
     display_name = string
+  }))
+  default = []
+}
+
+variable "gcs_buckets" {
+  description = "List of GCS buckets to create"
+  type = list(object({
+    name                     = string
+    location                 = string
+    storage_class            = optional(string)
+    public_access_prevention = optional(string)
+    versioning_enabled       = optional(bool)
+    labels                   = optional(map(string))
+    lifecycle_rules = optional(list(object({
+      action = object({
+        type          = string
+        storage_class = optional(string)
+      })
+      condition = object({
+        age        = optional(number)
+        with_state = optional(string)
+      })
+    })))
   }))
   default = []
 }

@@ -2,8 +2,9 @@ variable "env" {
   description = "Environment name (e.g. dev, staging, prod)"
   type        = string
 }
-variable "base_labels" {
-  description = "Base labels applied to all resources in this root module"
+
+variable "labels" {
+  description = "Labels applied to all resources in this root module"
   type        = map(string)
   default     = {}
 }
@@ -20,6 +21,11 @@ variable "region" {
 
 variable "zone" {
   description = "Default GCE zone for compute resources"
+  type        = string
+}
+
+variable "network_name" {
+  description = "VPC network name"
   type        = string
 }
 
@@ -67,6 +73,29 @@ variable "iam_bindings" {
   type = list(object({
     service_account_email = string
     roles                 = list(string)
+  }))
+  default = []
+}
+
+variable "gcs_buckets" {
+  description = "List of GCS buckets to create"
+  type = list(object({
+    name                     = string
+    location                 = string
+    storage_class            = optional(string)
+    public_access_prevention = optional(string)
+    versioning_enabled       = optional(bool)
+    labels                   = optional(map(string))
+    lifecycle_rules = optional(list(object({
+      action = object({
+        type          = string
+        storage_class = optional(string)
+      })
+      condition = object({
+        age        = optional(number)
+        with_state = optional(string)
+      })
+    })))
   }))
   default = []
 }

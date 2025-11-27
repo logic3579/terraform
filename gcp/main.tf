@@ -24,7 +24,7 @@ provider "google-beta" {
 module "network" {
   source       = "./modules/network"
   project_id   = var.project_id
-  network_name = local.network_name
+  network_name = var.network_name
   subnets      = var.subnets
   firewalls    = var.firewalls
 }
@@ -34,6 +34,13 @@ module "iam" {
   project_id       = var.project_id
   service_accounts = var.service_accounts
   iam_bindings     = var.iam_bindings
+}
+
+module "gcs" {
+  source      = "./modules/gcs"
+  project_id  = var.project_id
+  gcs_buckets = var.gcs_buckets
+  labels      = var.labels
 }
 
 # module "gce" {

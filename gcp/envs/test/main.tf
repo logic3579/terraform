@@ -19,7 +19,8 @@ module "gcp" {
   source = "../../../gcp"
 
   env         = var.env
-  base_labels = var.base_labels
+  labels      = merge(var.labels, { environment = var.env })
+  network_name = var.network_name
   project_id  = var.project_id
   region      = var.region
   zone        = var.zone
@@ -28,6 +29,5 @@ module "gcp" {
   firewalls        = var.firewalls
   service_accounts = var.service_accounts
   iam_bindings     = var.iam_bindings
-  instances        = var.instances
-  instance_groups  = var.instance_groups
+  gcs_buckets      = var.gcs_buckets
 }
