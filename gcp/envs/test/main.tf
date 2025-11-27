@@ -18,16 +18,16 @@ provider "google-beta" {
 module "gcp" {
   source = "../../../gcp"
 
-  env        = var.env
-  project_id = var.project_id
-  region     = var.region
-  zone       = var.zone
+  env         = var.env
+  base_labels = var.base_labels
+  project_id  = var.project_id
+  region      = var.region
+  zone        = var.zone
 
   subnets          = var.subnets
-  iam_bindings     = var.iam_bindings
+  firewalls        = var.firewalls
   service_accounts = var.service_accounts
+  iam_bindings     = var.iam_bindings
   instances        = var.instances
   instance_groups  = var.instance_groups
-
-  base_labels = var.base_labels
 }

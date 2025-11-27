@@ -3,6 +3,12 @@ variable "env" {
   type        = string
 }
 
+variable "base_labels" {
+  description = "Base labels for this environment"
+  type        = map(string)
+  default     = {}
+}
+
 variable "project_id" {
   description = "GCP project ID"
   type        = string
@@ -27,11 +33,32 @@ variable "subnets" {
   }))
 }
 
+variable "firewalls" {
+  description = "Firewall rules for this environment"
+  type = list(object({
+    name                    = string
+    description             = optional(string)
+    direction               = string
+    priority                = optional(number)
+    source_ranges           = optional(list(string))
+    destination_ranges      = optional(list(string))
+    source_tags             = optional(list(string))
+    target_tags             = optional(list(string))
+    target_service_accounts = optional(list(string))
+    allow = list(object({
+      protocol = string
+      ports    = optional(list(string))
+    }))
+    disabled = optional(bool)
+  }))
+  default = []
+}
+
 variable "iam_bindings" {
   description = "Project-level IAM bindings"
   type = list(object({
-    role    = string
-    members = list(string)
+    service_account_email = string
+    roles                 = list(string)
   }))
   default = []
 }
@@ -67,10 +94,4 @@ variable "instance_groups" {
     instances = list(string)
   }))
   default = []
-}
-
-variable "base_labels" {
-  description = "Base labels for this environment"
-  type        = map(string)
-  default     = {}
 }

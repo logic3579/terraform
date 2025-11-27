@@ -3,11 +3,11 @@ variable "project_id" {
   type        = string
 }
 
-variable "bindings" {
-  description = "Project-level IAM bindings"
+variable "iam_bindings" {
+  description = "Project-level IAM bindings per service account"
   type = list(object({
-    role    = string
-    members = list(string)
+    service_account_email = string
+    roles                 = list(string)
   }))
   default = []
 }
@@ -17,6 +17,7 @@ variable "service_accounts" {
   type = list(object({
     account_id   = string
     display_name = string
+    description  = optional(string)
   }))
   default = []
 }

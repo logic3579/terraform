@@ -6,7 +6,7 @@ terraform {
   # Uncomment and adjust when using this directory as the terraform root.
   # backend "gcs" {
   #   bucket  = "your-tfstate-bucket-name"
-  #   prefix  = "gcp/root"
+  #   prefix  = "gcp/env"
   # }
 }
 
@@ -26,15 +26,15 @@ module "network" {
   project_id   = var.project_id
   network_name = local.network_name
   subnets      = var.subnets
-  labels       = local.common_labels
+  firewalls    = var.firewalls
 }
 
-# module "iam" {
-#   source           = "./modules/iam"
-#   project_id       = var.project_id
-#   bindings         = var.iam_bindings
-#   service_accounts = var.service_accounts
-# }
+module "iam" {
+  source           = "./modules/iam"
+  project_id       = var.project_id
+  service_accounts = var.service_accounts
+  iam_bindings     = var.iam_bindings
+}
 
 # module "gce" {
 #   source          = "./modules/gce"
