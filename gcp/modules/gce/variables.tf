@@ -3,57 +3,36 @@ variable "project_id" {
   type        = string
 }
 
-variable "env" {
-  description = "Environment name (e.g. dev, staging, prod)"
-  type        = string
-}
-
-variable "zone" {
-  description = "Default zone for instances"
-  type        = string
-}
-
-variable "instances" {
-  description = "GCE instance definitions"
+variable "vm_instances" {
+  description = "List of VM instances to create"
   type = list(object({
-    name                  = string
-    machine_type          = string
-    zone                  = optional(string)
-    tags                  = optional(list(string))
-    labels                = optional(map(string))
-    service_account_email = optional(string)
-    metadata              = optional(map(string))
+    name          = string
+    machine_type  = string
+    region        = string
+    zone          = string
+    image_family  = string
+    image_project = string
+    disk_size     = number
+    disk_type     = string
+    network_tags  = optional(list(string))
+    external_ip   = optional(bool, false)
+    network       = string
+    subnetwork    = string
   }))
   default = []
 }
 
 variable "instance_groups" {
-  description = "Instance groups definitions referencing existing instances by name"
+  description = "List of instance groups to create"
   type = list(object({
-    name      = string
-    zone      = string
-    instances = list(string)
+    name        = string
+    description = optional(string)
+    zone        = string
+    instances   = list(string)
+    named_ports = optional(list(object({
+      name = string
+      port = number
+    })))
   }))
   default = []
-}
-
-variable "default_labels" {
-  description = "Base labels for all compute resources"
-  type        = map(string)
-  default     = {}
-}
-
-variable "boot_disk_image" {
-  description = "Boot disk image for instances (e.g. family/debian-11)"
-  type        = string
-}
-
-variable "subnetwork_self_link" {
-  description = "Self link of the subnetwork for primary NIC"
-  type        = string
-}
-
-variable "default_service_account_email" {
-  description = "Default service account email for instances if not overridden"
-  type        = string
 }

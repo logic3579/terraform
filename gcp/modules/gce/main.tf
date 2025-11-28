@@ -1,63 +1,99 @@
-locals {
-  default_labels = merge(
-    var.default_labels,
-    {
-      env     = var.env
-      project = var.project_id
-      managed = "terraform"
-    },
-  )
+resource "google_compute_address" "this" {
+  for_each = { for vm in var.vm_instances : vm.name => vm if vm.external_ip == true }
+
+  project      = var.project_id
+  name         = "${each.value.name}-external-ip"
+  region       = each.value.region
+  address_type = "EXTERNAL"
 }
 
 resource "google_compute_instance" "this" {
-  for_each = { for i in var.instances : i.name => i }
+  for_each = { for vm in var.vm_instances : vm.name => vm }
 
   project      = var.project_id
   name         = each.value.name
   machine_type = each.value.machine_type
-  zone         = coalesce(each.value.zone, var.zone)
+  zone         = each.value.zone
+  tags         = each.value.network_tags
 
-  tags = coalesce(each.value.tags, [])
-
-  labels = merge(
-    local.default_labels,
-    coalesce(each.value.labels, {}),
-  )
+  allow_stopping_for_update = true
 
   boot_disk {
     initialize_params {
-      image = var.boot_disk_image
+      image = "projects/${each.value.image_project}/global/images/family/${each.value.image_family}"
+      size  = each.value.disk_size
+      type  = each.value.disk_type
     }
   }
 
   network_interface {
-    # If subnetwork_self_link is provided, attach to that; otherwise use default network
-    subnetwork = var.subnetwork_self_link
+    network    = each.value.network
+    subnetwork = each.value.subnetwork
+
+    dynamic "access_config" {
+      for_each = each.value.external_ip ? [1] : []
+      content {
+        nat_ip = google_compute_address.this[each.key].address
+      }
+    }
   }
 
-  service_account {
-    email  = coalesce(each.value.service_account_email, var.default_service_account_email)
-    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+  metadata_startup_script = <<-EOF
+    #!/bin/bash
+    apt update
+    apt install ca-certificates curl
+
+    apt-get install -y ca-certificates curl gnupg lsb-release
+    mkdir -p /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    echo \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+      $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+    apt update
+    VERSION_STRING="5:28.5.2-1~ubuntu.22.04~jammy"
+    apt install docker-ce=$VERSION_STRING docker-ce-cli=$VERSION_STRING containerd.io docker-buildx-plugin docker-compose-plugin
+    apt-mark hold docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    systemctl enable --now docker
+  EOF
+
+
+  scheduling {
+    preemptible       = false
+    automatic_restart = true
   }
 
-  metadata = coalesce(each.value.metadata, {})
+  lifecycle {
+    prevent_destroy = false
+    create_before_destroy = true
+    ignore_changes = [
+      metadata,
+      metadata_startup_script,
+    ]
+  }
 }
 
 resource "google_compute_instance_group" "this" {
-  for_each = { for g in var.instance_groups : g.name => g }
+  for_each = { for ig in var.instance_groups : ig.name => ig }
 
-  project = var.project_id
-  name    = gpc_tf_name_prefix(var.prefix, gpc_tf_env_suffix(var.env, g.name))
-  zone    = each.value.zone
-  named_port {
-    name = "http"
-    port = 80
-  }
+  project     = var.project_id
+  name        = each.value.name
+  description = each.value.description
+  zone        = each.value.zone
 
   instances = [
-    for name, inst in google_compute_instance.this : inst.self_link if contains(each.value.instances, name)
+    for instance_name in each.value.instances :
+    google_compute_instance.this[instance_name].self_link
   ]
-}
 
-# Simple helper functions implemented as local expressions
-# Terraform doesn't support user-defined functions; we emulate naming helpers via locals below.
+  dynamic "named_port" {
+    for_each = coalesce(each.value.named_ports, [])
+    content {
+      name = named_port.value.name
+      port = named_port.value.port
+    }
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}

@@ -29,6 +29,12 @@ module "network" {
   firewalls    = var.firewalls
 }
 
+module "nat" {
+  source      = "./modules/nat"
+  project_id  = var.project_id
+  nat_configs = var.nat_configs
+}
+
 module "iam" {
   source           = "./modules/iam"
   project_id       = var.project_id
@@ -43,10 +49,9 @@ module "gcs" {
   labels      = var.labels
 }
 
-# module "gce" {
-#   source          = "./modules/gce"
-#   project_id      = var.project_id
-#   zone            = var.zone
-#   instances       = var.instances
-#   instance_groups = var.instance_groups
-# }
+module "gce" {
+  source          = "./modules/gce"
+  project_id      = var.project_id
+  vm_instances    = var.vm_instances
+  instance_groups = var.instance_groups
+}

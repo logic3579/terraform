@@ -59,6 +59,26 @@ variable "firewalls" {
   default = []
 }
 
+variable "nat_configs" {
+  description = "List of NAT configurations"
+  type = list(object({
+    name                               = string
+    router_name                        = string
+    network                            = string
+    region                             = string
+    source_subnetwork_ip_ranges_to_nat = optional(string, "ALL_SUBNETWORKS_ALL_IP_RANGES")
+    nat_ip_allocate_option             = optional(string, "AUTO_ONLY")
+    min_ports_per_vm                   = optional(number, 64)
+    max_ports_per_vm                   = optional(number, 65536)
+    enable_endpoint_independent_mapping = optional(bool, false)
+    log_config = optional(object({
+      enable = bool
+      filter = string
+    }))
+  }))
+  default = []
+}
+
 variable "service_accounts" {
   description = "Service accounts to create at project level"
   type = list(object({
@@ -100,26 +120,37 @@ variable "gcs_buckets" {
   default = []
 }
 
-variable "instances" {
-  description = "GCE instance definitions"
+variable "vm_instances" {
+  description = "List of VM instances to create"
   type = list(object({
-    name                  = string
-    machine_type          = string
-    zone                  = optional(string)
-    tags                  = optional(list(string))
-    labels                = optional(map(string))
-    service_account_email = optional(string)
-    metadata              = optional(map(string))
+    name          = string
+    machine_type  = string
+    region        = string
+    zone          = string
+    network_tags  = optional(list(string))
+    external_ip   = optional(bool, false)
+    image_family  = string
+    image_project = string
+    disk_size     = number
+    disk_type     = string
+    network       = string
+    subnetwork    = string
   }))
   default = []
 }
 
 variable "instance_groups" {
-  description = "Instance groups definitions referencing existing instances by name"
+  description = "List of instance groups to create"
   type = list(object({
-    name      = string
-    zone      = string
-    instances = list(string)
+    name        = string
+    description = optional(string)
+    zone        = string
+    instances   = list(string)
+    named_ports = optional(list(object({
+      name = string
+      port = number
+    })))
   }))
   default = []
 }
+

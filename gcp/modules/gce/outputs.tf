@@ -1,21 +1,22 @@
-output "instances" {
-  description = "Instances created by this module"
-  value = [
-    for name, inst in google_compute_instance.this : {
-      name      = inst.name
-      self_link = inst.self_link
-      zone      = inst.zone
-    }
-  ]
+output "instance_names" {
+  description = "Map of instance names"
+  value       = { for k, v in google_compute_instance.this : k => v.name }
 }
 
-output "instance_groups" {
-  description = "Instance groups created by this module"
-  value = [
-    for name, grp in google_compute_instance_group.this : {
-      name      = grp.name
-      self_link = grp.self_link
-      zone      = grp.zone
-    }
-  ]
+output "instance_ips" {
+  description = "Map of instance external IPs"
+  value = {
+    for k, v in google_compute_instance.this :
+    k => length(v.network_interface[0].access_config) > 0 ? v.network_interface[0].access_config[0].nat_ip : null
+  }
+}
+
+output "instance_group_names" {
+  description = "Map of instance group names"
+  value       = { for k, v in google_compute_instance_group.this : k => v.name }
+}
+
+output "instance_group_self_links" {
+  description = "Map of instance group self links"
+  value       = { for k, v in google_compute_instance_group.this : k => v.self_link }
 }
