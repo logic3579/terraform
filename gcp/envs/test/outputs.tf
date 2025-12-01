@@ -18,6 +18,16 @@ output "nat_names" {
   value       = module.gcp.nat_names
 }
 
+output "lb_ip_addresses" {
+  description = "Load balancer IP addresses"
+  value       = module.gcp.lb_ip_addresses
+}
+
+output "lb_urls" {
+  description = "Load balancer URLs"
+  value       = module.gcp.lb_urls
+}
+
 output "service_accounts" {
   description = "Service accounts"
   value       = module.gcp.service_accounts

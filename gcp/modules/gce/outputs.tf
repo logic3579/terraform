@@ -20,3 +20,8 @@ output "instance_group_self_links" {
   description = "Map of instance group self links"
   value       = { for k, v in google_compute_instance_group.this : k => v.self_link }
 }
+
+output "instance_group_zones" {
+  description = "Map of instance group zones"
+  value       = { for k, v in google_compute_instance_group.this : k => v.zone }
+}

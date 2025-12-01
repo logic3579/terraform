@@ -18,14 +18,12 @@ locals {
   ])
 }
 
-resource "google_project_iam_binding" "this" {
+resource "google_project_iam_member" "this" {
   for_each = {
     for fb in local.flat_bindings : fb.key => fb
   }
 
   project = var.project_id
   role    = each.value.role
-  members = [
-    "serviceAccount:${each.value.email}",
-  ]
+  member  = "serviceAccount:${each.value.email}"
 }

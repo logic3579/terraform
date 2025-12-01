@@ -33,4 +33,5 @@ module "gcp" {
   gcs_buckets      = var.gcs_buckets
   vm_instances     = var.vm_instances
   instance_groups  = var.instance_groups
+  load_balancers   = var.load_balancers
 }

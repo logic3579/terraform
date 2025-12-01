@@ -18,6 +18,16 @@ output "nat_names" {
   value       = module.nat.nat_names
 }
 
+output "lb_ip_addresses" {
+  description = "Load balancer IP addresses"
+  value       = module.lb.lb_ip_addresses
+}
+
+output "lb_urls" {
+  description = "Load balancer URLs"
+  value       = module.lb.lb_urls
+}
+
 output "service_accounts" {
   description = "Service accounts created by the IAM module"
   value       = module.iam.service_accounts

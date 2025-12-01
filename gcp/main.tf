@@ -55,3 +55,23 @@ module "gce" {
   vm_instances    = var.vm_instances
   instance_groups = var.instance_groups
 }
+
+# Transform load_balancers to replace instance_group names with self_links
+locals {
+  load_balancers_with_self_links = [
+    for lb in var.load_balancers : merge(lb, {
+      backend_service = merge(lb.backend_service, {
+        instance_groups = [
+          for ig_name in lb.backend_service.instance_groups :
+          module.gce.instance_group_self_links[ig_name]
+        ]
+      })
+    })
+  ]
+}
+
+module "lb" {
+  source         = "./modules/lb"
+  project_id     = var.project_id
+  load_balancers = local.load_balancers_with_self_links
+}
