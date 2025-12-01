@@ -161,6 +161,10 @@ variable "load_balancers" {
     description         = optional(string)
     global_address_name = optional(string) # Name of the global address to use (allows sharing IP between LBs)
 
+    # Port configuration
+    http_port  = optional(number, 80)
+    https_port = optional(number, 443)
+
     # Health check configuration (TCP)
     health_check = object({
       name                = string
@@ -195,10 +199,6 @@ variable "load_balancers" {
       private_key         = optional(string)
       certificate         = optional(string)
     }))
-
-    # Port configuration
-    http_port  = optional(number, 80)
-    https_port = optional(number, 443)
   }))
   default = []
 }
