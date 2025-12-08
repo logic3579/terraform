@@ -11,6 +11,20 @@ resource "google_compute_router" "this" {
   }
 }
 
+# External IP for NAT (when using MANUAL_ONLY)
+resource "google_compute_address" "nat_ip" {
+  for_each = {
+    for nat in var.nat_configs :
+    nat.name => nat
+    if nat.nat_ip_allocate_option == "MANUAL_ONLY"
+  }
+
+  project      = var.project_id
+  name         = "${each.value.name}-nat-ip"
+  region       = each.value.region
+  address_type = "EXTERNAL"
+}
+
 resource "google_compute_router_nat" "this" {
   for_each = { for nat in var.nat_configs : nat.name => nat }
 
@@ -21,6 +35,11 @@ resource "google_compute_router_nat" "this" {
 
   nat_ip_allocate_option             = each.value.nat_ip_allocate_option
   source_subnetwork_ip_ranges_to_nat = each.value.source_subnetwork_ip_ranges_to_nat
+
+  # Attach external IP when using MANUAL_ONLY
+  nat_ips = each.value.nat_ip_allocate_option == "MANUAL_ONLY" ? [
+    google_compute_address.nat_ip[each.key].self_link
+  ] : null
 
   min_ports_per_vm                    = each.value.min_ports_per_vm
   max_ports_per_vm                    = each.value.max_ports_per_vm
