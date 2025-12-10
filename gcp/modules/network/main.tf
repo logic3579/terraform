@@ -17,7 +17,14 @@ resource "google_compute_subnetwork" "this" {
   private_ip_google_access = true
   stack_type               = "IPV4_ONLY"
   purpose                  = "PRIVATE"
-  role                     = "ACTIVE"
+
+  lifecycle {
+    ignore_changes = [
+      description,
+      secondary_ip_range,
+      # private_ip_google_access,
+    ]
+  }
 }
 
 resource "google_compute_firewall" "this" {

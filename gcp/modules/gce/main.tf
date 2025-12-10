@@ -54,6 +54,11 @@ resource "google_compute_instance" "this" {
     systemctl enable --now docker
   EOF
 
+  # Use Compute Engine service account
+  service_account {
+    email  = each.value.service_account_email
+    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+  }
 
   scheduling {
     preemptible       = false

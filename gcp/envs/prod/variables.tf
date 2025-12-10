@@ -123,18 +123,19 @@ variable "gcs_buckets" {
 variable "vm_instances" {
   description = "List of VM instances to create"
   type = list(object({
-    name          = string
-    machine_type  = string
-    region        = string
-    zone          = string
-    network_tags  = optional(list(string))
-    external_ip   = optional(bool, false)
-    image_family  = string
-    image_project = string
-    disk_size     = number
-    disk_type     = string
-    network       = string
-    subnetwork    = string
+    name                  = string
+    machine_type          = string
+    region                = string
+    zone                  = string
+    network_tags          = optional(list(string))
+    external_ip           = optional(bool, false)
+    image_family          = string
+    image_project         = string
+    disk_size             = number
+    disk_type             = string
+    network               = string
+    subnetwork            = string
+    service_account_email = optional(string, "xxx-compute@developer.gserviceaccount.com")
   }))
   default = []
 }
