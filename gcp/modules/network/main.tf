@@ -22,6 +22,7 @@ resource "google_compute_subnetwork" "this" {
     ignore_changes = [
       description,
       secondary_ip_range,
+      role,
       # private_ip_google_access,
     ]
   }
