@@ -1,0 +1,316 @@
+# Environment Configuration
+# Copy this file to terraform.tfvars and update with your actual values
+
+env = "test"  # Environment name: dev, test, or prod
+
+labels = {
+  organization = "my-org"          # Your organization name
+  environment  = "test"            # Environment label
+  managed-by   = "terraform"       # Management tool
+}
+
+project_id = "my-project-test"     # GCP Project ID
+region     = "asia-southeast1"     # Default region
+zone       = "asia-southeast1-a"   # Default zone
+
+# ========================================
+# VPC Network Configuration
+# ========================================
+
+network_name = "my-project-test-vpc"
+
+subnets = [
+  {
+    name   = "database-subnet"
+    cidr   = "10.0.0.0/24"
+    region = "asia-southeast1"
+  },
+  {
+    name   = "app-subnet"
+    cidr   = "10.0.1.0/24"
+    region = "asia-southeast1"
+  },
+  {
+    name   = "web-subnet"
+    cidr   = "10.0.2.0/24"
+    region = "asia-southeast1"
+  }
+]
+
+# ========================================
+# Firewall Rules
+# ========================================
+
+firewalls = [
+  {
+    name          = "my-project-test-vpc-allow-ssh"
+    description   = "Allow SSH access from anywhere"
+    direction     = "INGRESS"
+    priority      = 1000
+    source_ranges = ["0.0.0.0/0"]  # Restrict this in production!
+    target_tags   = ["ssh-enabled"]
+    allow = [
+      {
+        protocol = "tcp"
+        ports    = ["22"]
+      }
+    ]
+  },
+  {
+    name          = "my-project-test-vpc-allow-http-https"
+    description   = "Allow HTTP and HTTPS traffic"
+    direction     = "INGRESS"
+    priority      = 1000
+    source_ranges = ["0.0.0.0/0"]
+    target_tags   = ["web-server"]
+    allow = [
+      {
+        protocol = "tcp"
+        ports    = ["80", "443"]
+      }
+    ]
+  },
+  {
+    name          = "my-project-test-vpc-allow-internal"
+    description   = "Allow internal communication"
+    direction     = "INGRESS"
+    priority      = 65534
+    source_ranges = ["10.0.0.0/8"]  # Internal network range
+    allow = [
+      {
+        protocol = "tcp"
+        ports    = ["0-65535"]
+      },
+      {
+        protocol = "udp"
+        ports    = ["0-65535"]
+      },
+      {
+        protocol = "icmp"
+      }
+    ]
+  }
+]
+
+# ========================================
+# Cloud NAT Configuration
+# ========================================
+
+nat_configs = [
+  {
+    name                                = "my-project-test-nat"
+    router_name                         = "my-project-test-router"
+    network                             = "my-project-test-vpc"
+    region                              = "asia-southeast1"
+    source_subnetwork_ip_ranges_to_nat  = "ALL_SUBNETWORKS_ALL_IP_RANGES"
+    nat_ip_allocate_option              = "AUTO_ONLY"  # or "MANUAL_ONLY" for static IP
+    min_ports_per_vm                    = 64
+    max_ports_per_vm                    = 65536
+    enable_endpoint_independent_mapping = false
+    log_config = {
+      enable = false
+      filter = "ERRORS_ONLY"  # Options: ERRORS_ONLY, TRANSLATIONS_ONLY, ALL
+    }
+  }
+]
+
+# ========================================
+# IAM - Service Accounts
+# ========================================
+
+service_accounts = [
+  {
+    account_id   = "app-service-account"
+    display_name = "Application Service Account"
+    description  = "Service account for application workloads"
+    roles = [
+      "roles/storage.objectViewer",
+      "roles/logging.logWriter"
+    ]
+  },
+  {
+    account_id   = "ci-cd-account"
+    display_name = "CI/CD Service Account"
+    description  = "Service account for CI/CD pipelines"
+    roles = [
+      "roles/container.developer"
+    ]
+  }
+]
+
+# ========================================
+# Cloud Storage Buckets
+# ========================================
+
+gcs_buckets = [
+  {
+    name                        = "app-test-bucket"
+    location                    = "asia-southeast1"
+    storage_class               = "STANDARD"
+    #uniform_bucket_level_access = true
+    public_access_prevention    = "inherited" # enforced / inherited
+    versioning_enabled          = true
+    lifecycle_rules = [
+      {
+        action = {
+          type = "Delete"
+        }
+        condition = {
+          age                   = 90
+          with_state            = "ANY"
+          matches_storage_class = ["STANDARD"]
+        }
+      }
+    ]
+  }
+]
+
+# ========================================
+# Compute Engine - VM Instances
+# ========================================
+
+vm_instances = [
+  {
+    name                  = "web-server-1"
+    machine_type          = "e2-custom-1-2048"
+    region                = "asia-southeast1"
+    zone                  = "asia-southeast1-a"
+    network_tags          = ["web-server", "ssh-enabled"]
+    external_ip           = true
+    image_family          = "ubuntu-2404-lts-amd64"
+    image_project         = "ubuntu-os-cloud"
+    disk_size             = 100
+    disk_type             = "pd-balanced"
+    network               = "my-project-test-vpc"
+    subnetwork            = "web-subnet"
+    service_account_email = "PROJECT_NUMBER-compute@developer.gserviceaccount.com"
+  },
+  {
+    name                  = "app-server-1"
+    machine_type          = "e2-custom-2-4096"
+    region                = "asia-southeast1"
+    zone                  = "asia-southeast1-b"
+    network_tags          = ["app-server", "ssh-enabled"]
+    external_ip           = false  # Private instance
+    image_family          = "ubuntu-2404-lts-amd64"
+    image_project         = "ubuntu-os-cloud"
+    disk_size             = 200
+    disk_type             = "pd-standard"
+    network               = "my-project-test-vpc"
+    subnetwork            = "app-subnet"
+    service_account_email = "PROJECT_NUMBER-compute@developer.gserviceaccount.com"
+  }
+]
+
+# ========================================
+# Instance Groups
+# ========================================
+
+instance_groups = [
+  {
+    name        = "web-servers-group-a"
+    description = "Instance group for web servers in zone a"
+    zone        = "asia-southeast1-a"
+    instances   = ["web-server-1"]
+    named_ports = [
+      { name = "http", port = 80 },
+      { name = "https", port = 443 }
+    ]
+  },
+  {
+    name        = "app-servers-group-b"
+    description = "Instance group for app servers in zone b"
+    zone        = "asia-southeast1-b"
+    instances   = ["app-server-1"]
+    named_ports = [
+      { name = "api-1", port = 8000 },
+      { name = "api-2", port = 8080 }
+    ]
+  }
+]
+
+# ========================================
+# Load Balancers
+# ========================================
+
+load_balancers = [
+  # Example 1: HTTP + HTTPS Load Balancer with managed SSL
+  {
+    name                = "web-lb"
+    description         = "Load balancer for web traffic"
+    global_address_name = "web-lb-ip"
+    http_port           = 80
+    https_port          = 443
+
+    health_check = {
+      name                = "web-health-check"
+      check_interval_sec  = 10
+      timeout_sec         = 5
+      healthy_threshold   = 2
+      unhealthy_threshold = 3
+      port                = 80
+    }
+
+    backend_service = {
+      name             = "web-backend"
+      protocol         = "HTTP"
+      port_name        = "http"
+      timeout_sec      = 30
+      enable_cdn       = false
+      session_affinity = "CLIENT_IP"  # Options: NONE, CLIENT_IP, CLIENT_IP_PROTO
+      security_policy  = null         # Cloud Armor policy name (optional)
+      enable_logging   = false
+      log_sample_rate  = 0.5
+
+      #balancing_mode   = UTILIZATION
+      #max_utilization  = 0.5
+      balancing_mode        = "RATE"
+      max_rate_per_instance = 1000
+
+      instance_groups = [
+        "web-servers-group-a"
+      ]
+    }
+
+    ssl_config = {
+      enabled             = true
+      certificate_domains = ["www.example.com"]  # GCP-managed certificate
+      #private_key         = null
+      #certificate         = null
+    }
+  },
+
+  # Example 2: HTTP-only Load Balancer on custom port
+  {
+    name                = "api-lb"
+    description         = "Load balancer for API traffic"
+    global_address_name = "web-lb-ip"  # Can share the same IP
+    http_port           = 8000
+
+    health_check = {
+      name                = "api-health-check"
+      check_interval_sec  = 5
+      timeout_sec         = 5
+      healthy_threshold   = 2
+      unhealthy_threshold = 2
+      port                = 8000
+    }
+
+    backend_service = {
+      name                  = "api-backend"
+      protocol              = "HTTP"
+      port_name             = "api"
+      timeout_sec           = 60
+      enable_cdn            = false
+      session_affinity      = "NONE"
+      security_policy       = null
+      enable_logging        = false
+      log_sample_rate       = 0.1
+      balancing_mode        = "UTILIZATION"
+      max_utilization       = 0.8
+      instance_groups = [
+        "app-servers-group-b"
+      ]
+    }
+  }
+]
