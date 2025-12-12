@@ -1,24 +1,6 @@
 // Root GCP module: wiring submodules and example usage
-
-terraform {
-  # Backend configuration template (for direct root usage)
-  # In most cases, you should configure the backend in envs/* as the actual root.
-  # Uncomment and adjust when using this directory as the terraform root.
-  # backend "gcs" {
-  #   bucket  = "your-tfstate-bucket-name"
-  #   prefix  = "gcp/env"
-  # }
-}
-
-provider "google" {
-  project = var.project_id
-  region  = var.region
-}
-
-provider "google-beta" {
-  project = var.project_id
-  region  = var.region
-}
+// Note: This is a reusable module. Provider and backend configuration
+// should be defined in the environment-specific configurations (envs/*).
 
 # Example submodule wiring
 module "network" {

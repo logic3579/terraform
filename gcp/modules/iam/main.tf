@@ -3,7 +3,7 @@ resource "google_service_account" "this" {
   project      = var.project_id
   account_id   = each.value.account_id
   display_name = coalesce(each.value.display_name, each.value.account_id)
-  description  = each.value.description
+  description  = coalesce(each.value.description, "Managed by Terraform")
 }
 
 locals {

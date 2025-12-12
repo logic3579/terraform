@@ -1,8 +1,18 @@
 terraform {
-  backend "gcs" {
-    bucket = "revosurge-uat-loki-chunks"
-    prefix = "gcp/prod"
+  required_version = "~> 1.5"
+
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = ">= 5.0, < 8.0"  # Allow 5.x and 7.x
+    }
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = ">= 5.0, < 8.0"  # Allow 5.x and 7.x
+    }
   }
+
+  backend "gcs" {}  # Configuration loaded from backend.hcl
 }
 
 provider "google" {
@@ -15,15 +25,17 @@ provider "google-beta" {
   region  = var.region
 }
 
+# Use root module directly - variables defined in gcp/variables.tf
+# Values provided via terraform.tfvars
 module "gcp" {
-  source = "../../../gcp"
+  source = "../../"
 
-  env        = var.env
-  labels     = merge(var.labels, { environment = var.env })
-  project_id = var.project_id
-  region     = var.region
-  zone       = var.zone
-
+  # All variables are automatically passed from terraform.tfvars
+  env              = var.env
+  labels           = merge(var.labels, { environment = var.env, managed_by = "terraform" })
+  project_id       = var.project_id
+  region           = var.region
+  zone             = var.zone
   network_name     = var.network_name
   subnets          = var.subnets
   firewalls        = var.firewalls

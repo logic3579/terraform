@@ -6,7 +6,7 @@ resource "google_storage_bucket" "this" {
   location                    = each.value.location
   storage_class               = coalesce(each.value.storage_class, "STANDARD")
   uniform_bucket_level_access = true
-  public_access_prevention    = coalesce(each.value.public_access_prevention, "null")
+  public_access_prevention    = coalesce(each.value.public_access_prevention, "enforced")
 
   versioning {
     enabled = coalesce(each.value.versioning_enabled, false)

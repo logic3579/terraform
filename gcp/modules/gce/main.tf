@@ -1,3 +1,13 @@
+# Get current project information for default service account
+data "google_project" "current" {
+  project_id = var.project_id
+}
+
+locals {
+  # Default Compute Engine service account
+  default_compute_sa = "${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+}
+
 resource "google_compute_address" "this" {
   for_each = { for vm in var.vm_instances : vm.name => vm if vm.external_ip == true }
 
@@ -38,37 +48,18 @@ resource "google_compute_instance" "this" {
     }
   }
 
-  metadata_startup_script = <<-EOF
-    #!/bin/bash
-    apt update
-    apt install -y ca-certificates curl gnupg lsb-release
-    mkdir -p /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    echo \
-      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-      $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
-    apt update
-    VERSION_STRING="5:28.5.2-1~ubuntu.24.04~noble"
-    apt install -y docker-ce=$VERSION_STRING docker-ce-cli=$VERSION_STRING containerd.io docker-buildx-plugin docker-compose-plugin
-    apt-mark hold docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-    systemctl enable --now docker
-  EOF
+  # Startup script configuration - supports inline script or external file
+  metadata_startup_script = each.value.startup_script != null ? each.value.startup_script : (
+    each.value.startup_script_file != null ? file(each.value.startup_script_file) : null
+  )
 
-  # Use Compute Engine service account with none scopes
+  metadata = each.value.metadata
+
+  # Service account configuration
+  # Uses default Compute Engine SA if not specified
   service_account {
-    email  = each.value.service_account_email
-    scopes = []
-    # Allow default access
-    # scopes = [
-    #   "https://www.googleapis.com/auth/devstorage.read_only",
-    #   "https://www.googleapis.com/auth/logging.write",
-    #   "https://www.googleapis.com/auth/monitoring.write",
-    #   "https://www.googleapis.com/auth/servicecontrol",
-    #   "https://www.googleapis.com/auth/service.management.readonly",
-    #   "https://www.googleapis.com/auth/trace.append",
-    # ]
-    # Allow full access to all Cloud APIs
-    # scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+    email  = coalesce(each.value.service_account_email, local.default_compute_sa)
+    scopes = coalesce(each.value.service_account_scopes, ["https://www.googleapis.com/auth/cloud-platform"])
   }
 
   scheduling {
@@ -82,6 +73,7 @@ resource "google_compute_instance" "this" {
     ignore_changes = [
       metadata,
       metadata_startup_script,
+      metadata["ssh-keys"],
     ]
   }
 }
