@@ -47,7 +47,9 @@ firewalls = [
     description   = "Allow SSH access from anywhere"
     direction     = "INGRESS"
     priority      = 1000
-    source_ranges = ["0.0.0.0/0"]  # Restrict this in production!
+    source_ranges = [
+      "35.235.240.0/20", # GCP IAP
+    ]
     target_tags   = ["ssh-enabled"]
     allow = [
       {
@@ -145,16 +147,18 @@ buckets = [
     storage_class               = "STANDARD"
     public_access_prevention    = "inherited" # enforced / inherited
     versioning_enabled          = true
-    lifecycle_rules = [
+    lifecycle_rules             = [
       {
-        action = {
-          type = "Delete"
-        }
-        condition = {
-          age                   = 90
-          with_state            = "ANY"
-          matches_storage_class = ["STANDARD"]
-        }
+        action = { type = "SetStorageClass", storage_class = "NEARLINE" }
+        condition = { age = 30 }
+      },
+      {
+        action = { type = "SetStorageClass", storage_class = "COLDLINE" }
+        condition = { age = 90 }
+      },
+      {
+        action = { type = "Delete" }
+        condition = { age = 365 }
       }
     ]
   }

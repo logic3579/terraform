@@ -67,6 +67,12 @@ resource "google_compute_instance" "this" {
     automatic_restart = true
   }
 
+  shielded_instance_config {
+    enable_secure_boot          = true
+    enable_vtpm                 = true
+    enable_integrity_monitoring = true
+  }
+
   lifecycle {
     prevent_destroy       = false
     create_before_destroy = true
