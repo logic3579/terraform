@@ -9,7 +9,7 @@ This directory contains Terraform configurations for managing GCP infrastructure
 1. **GCP Project**: Ensure you have a GCP project created
 2. **GCS Bucket for State**: Create a GCS bucket for Terraform state storage
 3. **gcloud CLI**: Install and configure [gcloud CLI](https://cloud.google.com/sdk/docs/install)
-4. **Terraform**: Install [Terraform](https://www.terraform.io/downloads) (v1.0+)
+4. **Terraform**: Install [Terraform](https://www.terraform.io/downloads) (v1.5+)
 
 ### ⚠️ Important: Configure GCS Backend First
 
@@ -24,21 +24,18 @@ This directory contains Terraform configurations for managing GCP infrastructure
    gsutil versioning set on gs://YOUR-TERRAFORM-STATE-BUCKET
    ```
 
-2. Update the backend configuration in each environment's `main.tf`:
+2. Create `backend.hcl` in each environment directory:
 
    ```hcl
-   terraform {
-     backend "gcs" {
-       bucket = "YOUR-TERRAFORM-STATE-BUCKET"  # ← Change this
-       prefix = "gcp/ENVIRONMENT"              # ← Change ENVIRONMENT (dev/test/prod)
-     }
-   }
+   # gcp/envs/dev/backend.hcl
+   bucket = "YOUR-TERRAFORM-STATE-BUCKET"
+   prefix = "gcp/dev"
    ```
 
-3. Initialize Terraform:
+3. Initialize Terraform with backend config:
    ```bash
    cd gcp/envs/YOUR_ENVIRONMENT
-   terraform init
+   terraform init -backend-config=backend.hcl
    ```
 
 ---
@@ -49,27 +46,69 @@ This directory contains Terraform configurations for managing GCP infrastructure
 gcp/
 ├── README.md                    # This file
 ├── main.tf                      # Root module - wires submodules together
-├── variables.tf                 # Root module variables
+├── variables.tf                 # Root module variables (with full type definitions)
 ├── outputs.tf                   # Root module outputs
+├── versions.tf                  # Terraform and provider version constraints
+├── _shared/                     # Shared configuration templates
+│   ├── variables.tf             # Shared variable declarations
+│   ├── outputs.tf               # Shared output definitions
+│   ├── providers.tf             # Provider configuration template
+│   └── main.tf                  # Module call template
 ├── modules/                     # Reusable Terraform modules
 │   ├── network/                 # VPC, subnets, firewalls
 │   ├── nat/                     # Cloud NAT and Router
-│   ├── gce/                     # Compute Engine VMs and instance groups
+│   ├── compute/                 # Compute Engine VMs and instance groups
 │   ├── iam/                     # Service accounts and IAM
-│   ├── gcs/                     # Cloud Storage buckets
+│   ├── storage/                 # Cloud Storage buckets
 │   └── lb/                      # Load Balancers (HTTP/HTTPS)
 └── envs/                        # Environment-specific configurations
     ├── terraform.tfvars.example # Template for tfvars
     ├── dev/                     # Development environment
-    │   ├── main.tf
-    │   ├── variables.tf
-    │   ├── outputs.tf
+    │   ├── main.tf              # Provider and module configuration
+    │   ├── variables.tf         # → symlink to ../../_shared/variables.tf
+    │   ├── outputs.tf           # → symlink to ../../_shared/outputs.tf
+    │   ├── backend.hcl          # Backend configuration
     │   └── terraform.tfvars     # Dev-specific values (gitignored)
     ├── test/                    # Test environment
     │   └── ...
     └── prod/                    # Production environment
         └── ...
 ```
+
+---
+
+## 📦 Shared Configuration (`_shared/`)
+
+The `_shared/` directory contains shared configuration templates that are used via symlinks in each environment directory. This eliminates code duplication across environments.
+
+### How It Works
+
+Environment directories use **symlinks** to share common configurations:
+
+```bash
+# In each envs/*/
+variables.tf → ../../_shared/variables.tf  # Symlink
+outputs.tf   → ../../_shared/outputs.tf    # Symlink
+main.tf      # Environment-specific (not symlinked)
+backend.hcl  # Environment-specific backend config
+```
+
+### Setting Up Symlinks for a New Environment
+
+```bash
+cd gcp/envs/NEW_ENV
+ln -s ../../_shared/variables.tf variables.tf
+ln -s ../../_shared/outputs.tf outputs.tf
+```
+
+### Files in `_shared/`
+
+| File | Purpose |
+|------|---------|
+| `variables.tf` | Shared variable declarations (used via symlink) |
+| `outputs.tf` | Shared output definitions (used via symlink) |
+| `providers.tf` | Provider configuration template (reference only) |
+| `main.tf` | Module call template (reference only) |
 
 ---
 
@@ -107,7 +146,7 @@ Manages Cloud NAT for private instance internet access.
 - Configurable port allocation
 - Logging support
 
-### GCE Module (`modules/gce/`)
+### Compute Module (`modules/compute/`)
 
 Manages Compute Engine VMs and instance groups.
 
@@ -138,7 +177,7 @@ Manages service accounts and IAM bindings.
 - Uses `google_project_iam_member` (not `binding`) to avoid conflicts
 - Supports multiple roles per service account
 
-### GCS Module (`modules/gcs/`)
+### Storage Module (`modules/storage/`)
 
 Manages Cloud Storage buckets.
 
@@ -203,7 +242,7 @@ gcloud config get-value project
 cd gcp/envs/test
 cp ../terraform.tfvars.example terraform.tfvars
 gcloud config set project my-project-test
-terraform init
+terraform init -backend-config=backend.hcl
 terraform plan
 terraform apply
 
@@ -211,7 +250,7 @@ terraform apply
 cd ../prod
 cp ../terraform.tfvars.example terraform.tfvars
 gcloud config set project my-project-prod
-terraform init
+terraform init -backend-config=backend.hcl
 terraform plan
 terraform apply
 ```
@@ -231,14 +270,17 @@ Each environment has its own `terraform.tfvars` file with environment-specific v
 ### Initialization
 
 ```bash
-# Initialize Terraform (downloads providers, sets up backend)
-terraform init
+# Initialize Terraform with backend configuration
+terraform init -backend-config=backend.hcl
+
+# Upgrade providers to latest compatible version
+terraform init -upgrade -backend-config=backend.hcl
 
 # Reinitialize after backend changes
-terraform init -reconfigure
+terraform init -reconfigure -backend-config=backend.hcl
 
 # Migrate state to a new backend
-terraform init -migrate-state
+terraform init -migrate-state -backend-config=backend.hcl
 ```
 
 ### Planning and Applying
@@ -270,10 +312,10 @@ terraform apply -target=module.gcp.module.network
 terraform state list
 
 # Show details of a specific resource
-terraform state show 'module.gcp.module.gce.google_compute_instance.this["vm-name"]'
+terraform state show 'module.gcp.module.compute.google_compute_instance.this["vm-name"]'
 
 # Remove a resource from state (doesn't delete the actual resource)
-terraform state rm 'module.gcp.module.gce.google_compute_instance.this["vm-name"]'
+terraform state rm 'module.gcp.module.compute.google_compute_instance.this["vm-name"]'
 
 # Move a resource in state (rename)
 terraform state mv 'module.old.resource' 'module.new.resource'
@@ -289,8 +331,12 @@ terraform state push terraform.tfstate
 
 ```bash
 # Import a VM instance
-terraform import 'module.gcp.module.gce.google_compute_instance.this["vm-name"]' \
+terraform import 'module.gcp.module.compute.google_compute_instance.this["vm-name"]' \
   projects/PROJECT_ID/zones/ZONE/instances/INSTANCE_NAME
+
+# Import a GCS bucket
+terraform import 'module.gcp.module.storage.google_storage_bucket.this["bucket-name"]' \
+  projects/PROJECT_ID/buckets/BUCKET_NAME
 
 # Import a subnet
 terraform import 'module.gcp.module.network.google_compute_subnetwork.this["subnet-name"]' \
@@ -324,7 +370,7 @@ terraform fmt -check
 terraform destroy
 
 # Destroy specific resources
-terraform destroy -target=module.gcp.module.gce.google_compute_instance.this["vm-name"]
+terraform destroy -target=module.gcp.module.compute.google_compute_instance.this["vm-name"]
 
 # Preview what would be destroyed
 terraform plan -destroy
@@ -457,22 +503,22 @@ unset TF_LOG_PATH
 1. Add configuration to `terraform.tfvars`:
 
    ```hcl
-   vm_instances = [
+   instances = [
      # ... existing VMs ...
      {
        name                  = "new-vm"
        machine_type          = "e2-medium"
        zone                  = "asia-southeast1-a"
        region                = "asia-southeast1"
-       image_family          = "ubuntu-2204-lts"
+       image_family          = "ubuntu-2404-lts-amd64"
        image_project         = "ubuntu-os-cloud"
        disk_size             = 100
-       disk_type             = "pd-standard"
+       disk_type             = "pd-balanced"
        network_tags          = ["web-server"]
        external_ip           = true
        network               = "my-vpc"
        subnetwork            = "my-subnet"
-       service_account_email = "PROJECT_NUMBER-compute@developer.gserviceaccount.com"
+       startup_script_file   = "../../scripts/install-docker.sh"
      }
    ]
    ```
@@ -501,18 +547,79 @@ Use separate directories for each environment and switch GCP projects:
 # Development
 cd gcp/envs/dev
 gcloud config set project my-project-dev
+terraform init -backend-config=backend.hcl
 terraform apply
 
 # Test
 cd gcp/envs/test
 gcloud config set project my-project-test
+terraform init -backend-config=backend.hcl
 terraform apply
 
 # Production
 cd gcp/envs/prod
 gcloud config set project my-company-prod
+terraform init -backend-config=backend.hcl
 terraform apply
 ```
+
+---
+
+## 📋 Naming Conventions
+
+### Module Names
+
+| Module | Directory | Description |
+|--------|-----------|-------------|
+| network | `modules/network/` | VPC, subnets, firewalls |
+| nat | `modules/nat/` | Cloud NAT and Router |
+| compute | `modules/compute/` | Compute Engine VMs and instance groups |
+| iam | `modules/iam/` | Service accounts and IAM |
+| storage | `modules/storage/` | Cloud Storage buckets |
+| lb | `modules/lb/` | Load Balancers |
+
+### Variable Names
+
+Variables follow the `<resource>s` naming pattern (plural form):
+
+| Variable | Description |
+|----------|-------------|
+| `subnets` | List of subnet configurations |
+| `firewalls` | List of firewall rules |
+| `nats` | List of NAT configurations |
+| `buckets` | List of GCS bucket configurations |
+| `instances` | List of VM instance configurations |
+| `instance_groups` | List of instance group configurations |
+| `load_balancers` | List of load balancer configurations |
+| `service_accounts` | List of service account configurations |
+| `iam_bindings` | List of IAM binding configurations |
+
+---
+
+## 🔄 Module Renaming and State Migration
+
+If you need to rename modules (e.g., from `gcs` to `storage`), you must migrate the Terraform state to avoid resource recreation.
+
+### State Migration Commands
+
+```bash
+cd gcp/envs/YOUR_ENVIRONMENT
+
+# Migrate storage module (gcs → storage)
+terraform state mv 'module.gcp.module.gcs' 'module.gcp.module.storage'
+
+# Migrate compute module (gce → compute)
+terraform state mv 'module.gcp.module.gce' 'module.gcp.module.compute'
+
+# Verify no resource changes
+terraform plan
+```
+
+### Important Notes
+
+- Run state migration commands for **each environment** separately
+- Always backup state before migration: `terraform state pull > backup.tfstate`
+- Verify with `terraform plan` after migration (should show no resource changes)
 
 ---
 
