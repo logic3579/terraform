@@ -9,7 +9,7 @@ locals {
 }
 
 resource "google_compute_address" "this" {
-  for_each = { for vm in var.vm_instances : vm.name => vm if vm.external_ip == true }
+  for_each = { for vm in var.instances : vm.name => vm if vm.external_ip == true }
 
   project      = var.project_id
   name         = "${each.value.name}-external-ip"
@@ -18,7 +18,7 @@ resource "google_compute_address" "this" {
 }
 
 resource "google_compute_instance" "this" {
-  for_each = { for vm in var.vm_instances : vm.name => vm }
+  for_each = { for vm in var.instances : vm.name => vm }
 
   project      = var.project_id
   name         = each.value.name

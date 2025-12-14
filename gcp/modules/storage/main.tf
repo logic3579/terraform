@@ -1,5 +1,5 @@
 resource "google_storage_bucket" "this" {
-  for_each = { for b in var.gcs_buckets : b.name => b }
+  for_each = { for b in var.buckets : b.name => b }
 
   project                     = var.project_id
   name                        = each.value.name

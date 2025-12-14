@@ -1,5 +1,5 @@
 resource "google_compute_router" "this" {
-  for_each = { for nat in var.nat_configs : nat.router_name => nat }
+  for_each = { for nat in var.nats : nat.router_name => nat }
 
   project = var.project_id
   name    = each.value.router_name
@@ -14,7 +14,7 @@ resource "google_compute_router" "this" {
 # External IP for NAT (when using MANUAL_ONLY)
 resource "google_compute_address" "nat_ip" {
   for_each = {
-    for nat in var.nat_configs :
+    for nat in var.nats :
     nat.name => nat
     if nat.nat_ip_allocate_option == "MANUAL_ONLY"
   }
@@ -26,7 +26,7 @@ resource "google_compute_address" "nat_ip" {
 }
 
 resource "google_compute_router_nat" "this" {
-  for_each = { for nat in var.nat_configs : nat.name => nat }
+  for_each = { for nat in var.nats : nat.name => nat }
 
   project = var.project_id
   name    = each.value.name

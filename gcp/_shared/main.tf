@@ -1,34 +1,6 @@
-# Prod environment configuration
-# Provider and module configuration loaded from _shared
+# Shared module call template for all environments
+# This file is symlinked or copied to each environment directory
 
-terraform {
-  required_version = "~> 1.5"
-
-  required_providers {
-    google = {
-      source  = "hashicorp/google"
-      version = ">= 5.0"
-    }
-    google-beta = {
-      source  = "hashicorp/google-beta"
-      version = ">= 5.0"
-    }
-  }
-
-  backend "gcs" {} # Configuration loaded from backend.hcl
-}
-
-provider "google" {
-  project = var.project_id
-  region  = var.region
-}
-
-provider "google-beta" {
-  project = var.project_id
-  region  = var.region
-}
-
-# Root module call with standardized variable names
 module "gcp" {
   source = "../../"
 

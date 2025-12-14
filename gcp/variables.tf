@@ -59,7 +59,7 @@ variable "firewalls" {
   default = []
 }
 
-variable "nat_configs" {
+variable "nats" {
   description = "List of NAT configurations"
   type = list(object({
     name                                = string
@@ -98,7 +98,7 @@ variable "iam_bindings" {
   default = []
 }
 
-variable "gcs_buckets" {
+variable "buckets" {
   description = "List of GCS buckets to create"
   type = list(object({
     name                     = string
@@ -121,36 +121,36 @@ variable "gcs_buckets" {
   default = []
 }
 
-variable "vm_instances" {
+variable "instances" {
   description = "List of VM instances to create"
   type = list(object({
-    name         = string
-    machine_type = string
-    region       = string
-    zone         = string
-    network_tags = optional(list(string))
-    external_ip  = optional(bool, false)
-    image_family = string
+    name          = string
+    machine_type  = string
+    region        = string
+    zone          = string
+    network_tags  = optional(list(string))
+    external_ip   = optional(bool, false)
+    image_family  = string
     image_project = string
-    disk_size    = number
-    disk_type    = string
-    network      = string
-    subnetwork   = string
-    
+    disk_size     = number
+    disk_type     = string
+    network       = string
+    subnetwork    = string
+
     # Service account configuration
-    service_account_email = optional(string)  # null = use default Compute Engine SA
+    service_account_email = optional(string) # null = use default Compute Engine SA
     service_account_scopes = optional(list(string), [
-       "https://www.googleapis.com/auth/devstorage.read_only",
-       "https://www.googleapis.com/auth/logging.write",
-       "https://www.googleapis.com/auth/monitoring.write",
-       "https://www.googleapis.com/auth/servicecontrol",
-       "https://www.googleapis.com/auth/service.management.readonly",
-       "https://www.googleapis.com/auth/trace.append",
+      "https://www.googleapis.com/auth/devstorage.read_only",
+      "https://www.googleapis.com/auth/logging.write",
+      "https://www.googleapis.com/auth/monitoring.write",
+      "https://www.googleapis.com/auth/servicecontrol",
+      "https://www.googleapis.com/auth/service.management.readonly",
+      "https://www.googleapis.com/auth/trace.append",
     ])
-    
+
     # Startup script configuration (choose one)
-    startup_script      = optional(string)  # Inline script
-    startup_script_file = optional(string)  # Path to script file
+    startup_script      = optional(string) # Inline script
+    startup_script_file = optional(string) # Path to script file
     metadata            = optional(map(string), {})
   }))
   default = []
@@ -203,10 +203,10 @@ variable "load_balancers" {
       balancing_mode        = optional(string, "UTILIZATION") # UTILIZATION or RATE
       max_utilization       = optional(number, 0.8)
       max_rate_per_instance = optional(number)
-      instance_groups       = list(string)          # List of instance group self_links
-      security_policy       = optional(string)      # Cloud Armor security policy (null to disable)
-      enable_logging        = optional(bool, false) # Enable access logging
-      log_sample_rate       = optional(number, 1.0) # Log sampling rate (0.0-1.0)
+      instance_groups       = list(string)     # List of instance group self_links
+      security_policy       = optional(string) # Cloud Armor security policy (null to disable)
+      enable_logging        = optional(bool, false)
+      log_sample_rate       = optional(number, 1.0)
     })
 
     # SSL configuration (optional)

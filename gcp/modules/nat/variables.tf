@@ -3,7 +3,7 @@ variable "project_id" {
   type        = string
 }
 
-variable "nat_configs" {
+variable "nats" {
   description = "List of NAT configurations"
   type = list(object({
     name                                = string

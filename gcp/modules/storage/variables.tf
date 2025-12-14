@@ -9,7 +9,7 @@ variable "labels" {
   default     = {}
 }
 
-variable "gcs_buckets" {
+variable "buckets" {
   description = "List of GCS buckets to create"
   type = list(object({
     name                     = string
