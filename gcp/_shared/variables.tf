@@ -28,18 +28,8 @@ variable "zone" {
   type        = string
 }
 
-variable "network_name" {
-  description = "VPC network name"
-  type        = string
-}
-
-variable "subnets" {
-  description = "List of subnet configurations"
-  type        = any # Full type definition in gcp/variables.tf
-}
-
-variable "firewalls" {
-  description = "Firewall rules for this environment"
+variable "networks" {
+  description = "List of VPC network configurations with their subnets and firewalls"
   type        = any # Full type definition in gcp/variables.tf
   default     = []
 }

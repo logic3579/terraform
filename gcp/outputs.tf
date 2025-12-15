@@ -1,11 +1,16 @@
-output "network_name" {
-  description = "VPC network name"
-  value       = module.network.network_name
+output "networks" {
+  description = "Map of VPC networks"
+  value       = module.network.networks
 }
 
 output "subnets" {
-  description = "List of subnets created by the network module"
+  description = "Map of subnets created by the network module"
   value       = module.network.subnets
+}
+
+output "firewalls" {
+  description = "Map of firewall rules"
+  value       = module.network.firewalls
 }
 
 output "nat_router_names" {

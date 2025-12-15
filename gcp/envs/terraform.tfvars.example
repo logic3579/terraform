@@ -1,117 +1,131 @@
 # Environment Configuration
 # Copy this file to terraform.tfvars and update with your actual values
 
-env = "test"  # Environment name: dev, test, or prod
+env = "test"  # Environment name: dev, test, devtest, uat, prod
 
 labels = {
   organization = "my-org"          # Your organization name
-  environment  = "test"            # Environment label
-  managed-by   = "terraform"       # Management tool
 }
 
-project_id = "my-project-test"     # GCP Project ID
+project_id = "my-project"          # GCP Project ID
 region     = "asia-southeast1"     # Default region
 zone       = "asia-southeast1-a"   # Default zone
 
 # ========================================
-# VPC Network Configuration
+# VPC Networks Configuration
 # ========================================
+# The `networks` variable supports multiple VPCs with their subnets and firewalls.
+# Each network is a self-contained configuration object.
 
-network_name = "my-project-test-vpc"
-
-subnets = [
+networks = [
+  # Example 1: Primary VPC with subnets and firewalls
   {
-    name   = "database-subnet"
-    cidr   = "10.0.0.0/24"
-    region = "asia-southeast1"
-  },
-  {
-    name   = "app-subnet"
-    cidr   = "10.0.1.0/24"
-    region = "asia-southeast1"
-  },
-  {
-    name   = "web-subnet"
-    cidr   = "10.0.2.0/24"
-    region = "asia-southeast1"
-  }
-]
-
-# ========================================
-# Firewall Rules
-# ========================================
-
-firewalls = [
-  {
-    name          = "my-project-test-vpc-allow-ssh"
-    description   = "Allow SSH access from anywhere"
-    direction     = "INGRESS"
-    priority      = 1000
-    source_ranges = [
-      "35.235.240.0/20", # GCP IAP
-    ]
-    target_tags   = ["ssh-enabled"]
-    allow = [
+    name = "my-project-vpc"
+    subnets = [
       {
-        protocol = "tcp"
-        ports    = ["22"]
-      }
-    ]
-  },
-  {
-    name          = "my-project-test-vpc-allow-http-https"
-    description   = "Allow HTTP and HTTPS traffic"
-    direction     = "INGRESS"
-    priority      = 1000
-    source_ranges = ["0.0.0.0/0"]
-    target_tags   = ["web-server"]
-    allow = [
-      {
-        protocol = "tcp"
-        ports    = ["80", "443"]
-      }
-    ]
-  },
-  {
-    name          = "my-project-test-vpc-allow-internal"
-    description   = "Allow internal communication"
-    direction     = "INGRESS"
-    priority      = 65534
-    source_ranges = ["10.0.0.0/8"]  # Internal network range
-    allow = [
-      {
-        protocol = "tcp"
-        ports    = ["0-65535"]
+        name   = "database-subnet"
+        cidr   = "10.0.0.0/24"
+        region = "asia-southeast1"
       },
       {
-        protocol = "udp"
-        ports    = ["0-65535"]
+        name   = "app-subnet"
+        cidr   = "10.0.1.0/24"
+        region = "asia-southeast1"
       },
       {
-        protocol = "icmp"
+        name   = "web-subnet"
+        cidr   = "10.0.2.0/24"
+        region = "asia-southeast1"
+      },
+      # Multi-region subnet example
+      {
+        name   = "us-subnet"
+        cidr   = "10.1.0.0/24"
+        region = "us-central1"
       }
     ]
-  }
+    firewalls = [
+      {
+        name        = "my-project-vpc-allow-ssh"
+        description = "Allow SSH access via IAP"
+        direction   = "INGRESS"
+        priority    = 1000
+        source_ranges = [
+          "35.235.240.0/20", # GCP IAP
+        ]
+        target_tags = ["ssh-enabled"]
+        allow = [
+          {
+            protocol = "tcp"
+            ports    = ["22"]
+          }
+        ]
+      },
+      {
+        name          = "my-project-vpc-allow-http-https"
+        description   = "Allow HTTP and HTTPS traffic"
+        direction     = "INGRESS"
+        priority      = 1000
+        source_ranges = ["0.0.0.0/0"]
+        target_tags   = ["web-server"]
+        allow = [
+          {
+            protocol = "tcp"
+            ports    = ["80", "443"]
+          }
+        ]
+      },
+      {
+        name          = "my-project-vpc-allow-internal"
+        description   = "Allow internal communication"
+        direction     = "INGRESS"
+        priority      = 65534
+        source_ranges = ["10.0.0.0/8"] # Internal network range
+        allow = [
+          {
+            protocol = "tcp"
+            ports    = ["0-65535"]
+          },
+          {
+            protocol = "udp"
+            ports    = ["0-65535"]
+          },
+          {
+            protocol = "icmp"
+          }
+        ]
+      }
+    ]
+  },
+
+  # Example 2: Secondary VPC (empty, no subnets or firewalls)
+  # Useful for peering or isolated networks
+  # {
+  #   name      = "my-project-secondary-vpc"
+  #   subnets   = []
+  #   firewalls = []
+  # }
 ]
 
 # ========================================
 # Cloud NAT Configuration
 # ========================================
+# NAT configurations reference VPCs by name from the `networks` variable.
 
 nats = [
   {
-    name                                = "my-project-test-nat"
-    router_name                         = "my-project-test-router"
-    network                             = "my-project-test-vpc"
+    name                                = "my-project-nat"
+    router_name                         = "my-project-router"
+    network                             = "my-project-vpc" # Must match a network name above
     region                              = "asia-southeast1"
     source_subnetwork_ip_ranges_to_nat  = "ALL_SUBNETWORKS_ALL_IP_RANGES"
-    nat_ip_allocate_option              = "AUTO_ONLY"  # or "MANUAL_ONLY" for static IP
+    nat_ip_allocate_option              = "AUTO_ONLY" # or "MANUAL_ONLY" for static IP
     min_ports_per_vm                    = 64
     max_ports_per_vm                    = 65536
     enable_endpoint_independent_mapping = false
     log_config = {
       enable = false
-      filter = "ERRORS_ONLY"  # Options: ERRORS_ONLY, TRANSLATIONS_ONLY, ALL
+      filter = "ERRORS_ONLY" # Options: ERRORS_ONLY, TRANSLATIONS_ONLY, ALL
     }
   }
 ]
@@ -126,12 +140,23 @@ service_accounts = [
     display_name = "Application Service Account"
     description  = "Service account for application workloads"
   },
+  {
+    account_id   = "web-sa"
+    display_name = "Web Server Service Account"
+    description  = "Service account for web-server workloads"
+  },
 ]
 iam_bindings = [
   {
-    service_account_email = "app-sa@PROJECT_NUMBER.iam.gserviceaccount.com"
+    service_account_email = "app-sa@my-project.iam.gserviceaccount.com"
     roles = [
-      "roles/firebasestorage.serviceAgent",
+      "roles/storage.objectViewer",
+    ]
+  },
+  {
+    service_account_email = "web-sa@my-project.iam.gserviceaccount.com"
+    roles = [
+      "roles/storage.objectViewer",
     ]
   },
 ]
@@ -142,22 +167,22 @@ iam_bindings = [
 
 buckets = [
   {
-    name                        = "app-test-bucket"
-    location                    = "asia-southeast1"
-    storage_class               = "STANDARD"
-    public_access_prevention    = "inherited" # enforced / inherited
-    versioning_enabled          = true
-    lifecycle_rules             = [
+    name                     = "app-test-bucket"
+    location                 = "asia-southeast1"
+    storage_class            = "STANDARD"
+    public_access_prevention = "enforced"
+    versioning_enabled       = true
+    lifecycle_rules = [
       {
-        action = { type = "SetStorageClass", storage_class = "NEARLINE" }
+        action    = { type = "SetStorageClass", storage_class = "NEARLINE" }
         condition = { age = 30 }
       },
       {
-        action = { type = "SetStorageClass", storage_class = "COLDLINE" }
+        action    = { type = "SetStorageClass", storage_class = "COLDLINE" }
         condition = { age = 90 }
       },
       {
-        action = { type = "Delete" }
+        action    = { type = "Delete" }
         condition = { age = 365 }
       }
     ]
@@ -167,38 +192,39 @@ buckets = [
 # ========================================
 # Compute Engine - VM Instances
 # ========================================
+# Instances reference VPCs and subnets by name.
 
 instances = [
   {
-    name                  = "web-server-1"
-    machine_type          = "e2-custom-1-2048"
-    region                = "asia-southeast1"
-    zone                  = "asia-southeast1-a"
-    network_tags          = ["web-server", "ssh-enabled"]
-    external_ip           = true
-    image_family          = "ubuntu-2404-lts-amd64"
-    image_project         = "ubuntu-os-cloud"
-    disk_size             = 100
-    disk_type             = "pd-balanced"
-    network               = "my-project-test-vpc"
-    subnetwork            = "web-subnet"
+    name          = "app-server-1"
+    machine_type  = "e2-custom-1-2048"
+    region        = "asia-southeast1"
+    zone          = "asia-southeast1-b"
+    network_tags  = ["app-server", "ssh-enabled"]
+    external_ip   = false # Private instance
+    image_family  = "ubuntu-2404-lts-amd64"
+    image_project = "ubuntu-os-cloud"
+    disk_size     = 50
+    disk_type     = "pd-standard"
+    network       = "my-project-vpc" # Must match a network name
+    subnetwork    = "app-subnet" # Must match a subnet name in the network
   },
   {
-    name                  = "app-server-1"
-    machine_type          = "e2-custom-2-4096"
-    region                = "asia-southeast1"
-    zone                  = "asia-southeast1-b"
-    network_tags          = ["app-server", "ssh-enabled"]
-    external_ip           = false  # Private instance
-    image_family          = "ubuntu-2404-lts-amd64"
-    image_project         = "ubuntu-os-cloud"
-    disk_size             = 50
-    disk_type             = "pd-standard"
-    network               = "my-project-test-vpc"
-    subnetwork            = "app-subnet"
-    startup_script_file   = "../../scripts/install-docker.sh"
-    preemptible           = false
-  }
+    name                = "web-server-1"
+    machine_type        = "e2-custom-2-4096"
+    region              = "asia-southeast1"
+    zone                = "asia-southeast1-a"
+    network_tags        = ["web-server", "ssh-enabled"]
+    external_ip         = true
+    image_family        = "ubuntu-2404-lts-amd64"
+    image_project       = "ubuntu-os-cloud"
+    disk_size           = 100
+    disk_type           = "pd-balanced"
+    network             = "my-project-vpc"
+    subnetwork          = "web-subnet"
+    startup_script_file = "../../scripts/install-docker.sh"
+    preemptible         = false
+  },
 ]
 
 # ========================================
@@ -256,15 +282,19 @@ load_balancers = [
       port_name        = "http"
       timeout_sec      = 30
       enable_cdn       = false
-      session_affinity = "CLIENT_IP"  # Options: NONE, CLIENT_IP, CLIENT_IP_PROTO
-      security_policy  = null         # Cloud Armor policy name (optional)
+      session_affinity = "CLIENT_IP" # Options: NONE, CLIENT_IP, CLIENT_IP_PROTO
+      security_policy  = null        # Cloud Armor policy name (optional)
       enable_logging   = false
       log_sample_rate  = 0.5
 
-      #balancing_mode   = UTILIZATION
-      #max_utilization  = 0.5
+      # Choose one balancing mode:
+      # Option 1: RATE-based
       balancing_mode        = "RATE"
       max_rate_per_instance = 1000
+
+      # Option 2: UTILIZATION-based (uncomment to use)
+      # balancing_mode  = "UTILIZATION"
+      # max_utilization = 0.8
 
       instance_groups = [
         "web-servers-group-a"
@@ -273,9 +303,10 @@ load_balancers = [
 
     ssl_config = {
       enabled             = true
-      certificate_domains = ["www.example.com"]  # GCP-managed certificate
-      #private_key         = null
-      #certificate         = null
+      certificate_domains = ["www.example.com"] # GCP-managed certificate
+      # For self-managed certificates:
+      # private_key  = file("path/to/key.pem")
+      # certificate  = file("path/to/cert.pem")
     }
   },
 
@@ -283,7 +314,7 @@ load_balancers = [
   {
     name                = "api-lb"
     description         = "Load balancer for API traffic"
-    global_address_name = "web-lb-ip"  # Can share the same IP
+    global_address_name = "web-lb-ip" # Can share the same IP
     http_port           = 8000
 
     health_check = {
@@ -296,17 +327,19 @@ load_balancers = [
     }
 
     backend_service = {
-      name                  = "api-backend"
-      protocol              = "HTTP"
-      port_name             = "api"
-      timeout_sec           = 60
-      enable_cdn            = false
-      session_affinity      = "NONE"
-      security_policy       = null
-      enable_logging        = false
-      log_sample_rate       = 0.1
-      balancing_mode        = "UTILIZATION"
-      max_utilization       = 0.8
+      name             = "api-backend"
+      protocol         = "HTTP"
+      port_name        = "api-1"
+      timeout_sec      = 60
+      enable_cdn       = false
+      session_affinity = "NONE"
+      security_policy  = null
+      enable_logging   = false
+      log_sample_rate  = 0.1
+
+      balancing_mode  = "UTILIZATION"
+      max_utilization = 0.8
+
       instance_groups = [
         "app-servers-group-b"
       ]

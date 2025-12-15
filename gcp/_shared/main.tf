@@ -12,9 +12,7 @@ module "gcp" {
   zone       = var.zone
 
   # Network resources
-  network_name = var.network_name
-  subnets      = var.subnets
-  firewalls    = var.firewalls
+  networks = var.networks
 
   # NAT resources
   nats = var.nats

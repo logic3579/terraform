@@ -1,21 +1,34 @@
-output "network_name" {
-  description = "VPC network name"
-  value       = google_compute_network.this.name
-}
-
-output "network_self_link" {
-  description = "Self link of the VPC network"
-  value       = google_compute_network.this.self_link
+output "networks" {
+  description = "Map of VPC networks"
+  value = {
+    for k, v in google_compute_network.this : k => {
+      name      = v.name
+      self_link = v.self_link
+      id        = v.id
+    }
+  }
 }
 
 output "subnets" {
-  description = "List of created subnets with basic info"
-  value = [
-    for s in google_compute_subnetwork.this : {
-      name          = s.name
-      self_link     = s.self_link
-      ip_cidr_range = s.ip_cidr_range
-      region        = s.region
+  description = "Map of subnets with network reference"
+  value = {
+    for k, v in google_compute_subnetwork.this : k => {
+      name          = v.name
+      network       = v.network
+      self_link     = v.self_link
+      ip_cidr_range = v.ip_cidr_range
+      region        = v.region
     }
-  ]
+  }
+}
+
+output "firewalls" {
+  description = "Map of firewall rules"
+  value = {
+    for k, v in google_compute_firewall.this : k => {
+      name      = v.name
+      network   = v.network
+      self_link = v.self_link
+    }
+  }
 }

@@ -4,11 +4,9 @@
 
 # 1. Network infrastructure (VPC, subnets, firewalls)
 module "network" {
-  source       = "./modules/network"
-  project_id   = var.project_id
-  network_name = var.network_name
-  subnets      = var.subnets
-  firewalls    = var.firewalls
+  source     = "./modules/network"
+  project_id = var.project_id
+  networks   = var.networks
 }
 
 # 2. NAT configuration (depends on network)

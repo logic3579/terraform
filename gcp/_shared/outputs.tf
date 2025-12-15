@@ -1,14 +1,19 @@
 # Shared output definitions for all environments
 # These outputs forward values from the root module
 
-output "network_name" {
-  description = "VPC network name"
-  value       = module.gcp.network_name
+output "networks" {
+  description = "Map of VPC networks"
+  value       = module.gcp.networks
 }
 
 output "subnets" {
-  description = "List of subnets"
+  description = "Map of subnets"
   value       = module.gcp.subnets
+}
+
+output "firewalls" {
+  description = "Map of firewall rules"
+  value       = module.gcp.firewalls
 }
 
 output "nat_router_names" {

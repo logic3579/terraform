@@ -2,7 +2,7 @@
 
 This directory contains Terraform configurations for managing GCP infrastructure across multiple environments.
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -11,7 +11,7 @@ This directory contains Terraform configurations for managing GCP infrastructure
 3. **gcloud CLI**: Install and configure [gcloud CLI](https://cloud.google.com/sdk/docs/install)
 4. **Terraform**: Install [Terraform](https://www.terraform.io/downloads) (v1.5+)
 
-### ⚠️ Important: Configure GCS Backend First
+### Important: Configure GCS Backend First
 
 **Before running any Terraform commands**, you must configure the GCS backend for state management.
 
@@ -27,9 +27,9 @@ This directory contains Terraform configurations for managing GCP infrastructure
 2. Create `backend.hcl` in each environment directory:
 
    ```hcl
-   # gcp/envs/dev/backend.hcl
+   # gcp/envs/devtest/backend.hcl
    bucket = "YOUR-TERRAFORM-STATE-BUCKET"
-   prefix = "gcp/dev"
+   prefix = "gcp/devtest"
    ```
 
 3. Initialize Terraform with backend config:
@@ -40,7 +40,7 @@ This directory contains Terraform configurations for managing GCP infrastructure
 
 ---
 
-## 📁 Directory Structure
+## Directory Structure
 
 ```
 gcp/
@@ -55,29 +55,46 @@ gcp/
 │   ├── providers.tf             # Provider configuration template
 │   └── main.tf                  # Module call template
 ├── modules/                     # Reusable Terraform modules
-│   ├── network/                 # VPC, subnets, firewalls
+│   ├── network/                 # VPC, subnets, firewalls (multi-VPC support)
 │   ├── nat/                     # Cloud NAT and Router
 │   ├── compute/                 # Compute Engine VMs and instance groups
 │   ├── iam/                     # Service accounts and IAM
 │   ├── storage/                 # Cloud Storage buckets
 │   └── lb/                      # Load Balancers (HTTP/HTTPS)
+├── scripts/                     # Startup scripts for VMs
+│   └── install-docker.sh        # Docker installation script
 └── envs/                        # Environment-specific configurations
     ├── terraform.tfvars.example # Template for tfvars
-    ├── dev/                     # Development environment
+    ├── devtest/                 # Dev + Test environment (merged)
     │   ├── main.tf              # Provider and module configuration
     │   ├── variables.tf         # → symlink to ../../_shared/variables.tf
     │   ├── outputs.tf           # → symlink to ../../_shared/outputs.tf
     │   ├── backend.hcl          # Backend configuration
-    │   └── terraform.tfvars     # Dev-specific values (gitignored)
-    ├── test/                    # Test environment
-    │   └── ...
+    │   └── terraform.tfvars     # Environment-specific values (gitignored)
     └── prod/                    # Production environment
         └── ...
 ```
 
 ---
 
-## 📦 Shared Configuration (`_shared/`)
+## Environments
+
+| Environment | Directory       | Description                                   |
+| ----------- | --------------- | --------------------------------------------- |
+| `devtest`   | `envs/devtest/` | Combined dev and test environment (multi-VPC) |
+| `prod`      | `envs/prod/`    | Production environment                        |
+
+### Multi-VPC Support
+
+The `devtest` environment demonstrates multi-VPC management within a single Terraform configuration. This is useful when:
+
+- Multiple VPCs exist in the same GCP project
+- You want to manage dev and test resources together
+- You need isolated networks with shared infrastructure code
+
+---
+
+## Shared Configuration (`_shared/`)
 
 The `_shared/` directory contains shared configuration templates that are used via symlinks in each environment directory. This eliminates code duplication across environments.
 
@@ -103,32 +120,54 @@ ln -s ../../_shared/outputs.tf outputs.tf
 
 ### Files in `_shared/`
 
-| File | Purpose |
-|------|---------|
-| `variables.tf` | Shared variable declarations (used via symlink) |
-| `outputs.tf` | Shared output definitions (used via symlink) |
+| File           | Purpose                                          |
+| -------------- | ------------------------------------------------ |
+| `variables.tf` | Shared variable declarations (used via symlink)  |
+| `outputs.tf`   | Shared output definitions (used via symlink)     |
 | `providers.tf` | Provider configuration template (reference only) |
-| `main.tf` | Module call template (reference only) |
+| `main.tf`      | Module call template (reference only)            |
 
 ---
 
-## 🏗️ Modules Overview
+## Modules Overview
 
 ### Network Module (`modules/network/`)
 
-Manages VPC networks, subnets, and firewall rules.
+Manages VPC networks, subnets, and firewall rules with **multi-VPC support**.
 
 **Resources**:
 
-- `google_compute_network` - VPC network
+- `google_compute_network` - VPC networks (supports multiple)
 - `google_compute_subnetwork` - Subnets
 - `google_compute_firewall` - Firewall rules
 
 **Key Features**:
 
+- **Multi-VPC support**: Manage multiple VPCs in a single configuration
 - Multi-region subnet support
 - Flexible firewall rule configuration
 - Private Google Access enabled by default
+
+**Variable Structure**:
+
+```hcl
+networks = [
+  {
+    name = "vpc-1"
+    subnets = [
+      { name = "subnet-1", cidr = "10.0.0.0/24", region = "asia-southeast1" }
+    ]
+    firewalls = [
+      { name = "allow-ssh", direction = "INGRESS", ... }
+    ]
+  },
+  {
+    name = "vpc-2"
+    subnets   = []
+    firewalls = []
+  }
+]
+```
 
 ### NAT Module (`modules/nat/`)
 
@@ -162,6 +201,8 @@ Manages Compute Engine VMs and instance groups.
 - External IP support
 - Service account configuration
 - Named ports for load balancing
+- Shielded VM (secure boot enabled)
+- Preemptible instance support
 
 ### IAM Module (`modules/iam/`)
 
@@ -218,11 +259,72 @@ Manages HTTP(S) Load Balancers.
 
 ---
 
-## 🌍 Multi-Environment Management
+## Variable Reference
+
+### Core Variables
+
+| Variable     | Type        | Description                                     |
+| ------------ | ----------- | ----------------------------------------------- |
+| `env`        | string      | Environment name: dev, test, devtest, uat, prod |
+| `labels`     | map(string) | Labels applied to all resources                 |
+| `project_id` | string      | GCP project ID                                  |
+| `region`     | string      | Default GCP region                              |
+| `zone`       | string      | Default GCP zone                                |
+
+### Network Variables
+
+| Variable   | Type         | Description                                           |
+| ---------- | ------------ | ----------------------------------------------------- |
+| `networks` | list(object) | List of VPC configurations with subnets and firewalls |
+
+**`networks` Object Structure**:
+
+```hcl
+{
+  name = string                    # VPC name
+  subnets = list(object({          # Optional, default: []
+    name   = string
+    cidr   = string
+    region = string
+  }))
+  firewalls = list(object({        # Optional, default: []
+    name                    = string
+    description             = optional(string)
+    direction               = string  # INGRESS or EGRESS
+    priority                = optional(number)
+    source_ranges           = optional(list(string))
+    destination_ranges      = optional(list(string))
+    source_tags             = optional(list(string))
+    target_tags             = optional(list(string))
+    target_service_accounts = optional(list(string))
+    allow = list(object({
+      protocol = string
+      ports    = optional(list(string))
+    }))
+    disabled = optional(bool)
+  }))
+}
+```
+
+### Other Variables
+
+| Variable           | Description                            |
+| ------------------ | -------------------------------------- |
+| `nats`             | List of NAT configurations             |
+| `buckets`          | List of GCS bucket configurations      |
+| `instances`        | List of VM instance configurations     |
+| `instance_groups`  | List of instance group configurations  |
+| `load_balancers`   | List of load balancer configurations   |
+| `service_accounts` | List of service account configurations |
+| `iam_bindings`     | List of IAM binding configurations     |
+
+---
+
+## Multi-Environment Management
 
 ### Switching Between Environments
 
-Each environment (dev/test/prod) typically uses a different GCP project. Use `gcloud` to switch contexts:
+Each environment may use a different GCP project. Use `gcloud` to switch contexts:
 
 ```bash
 # List available projects
@@ -238,9 +340,8 @@ gcloud config get-value project
 ### Example Workflow
 
 ```bash
-# Working with TEST environment
-cd gcp/envs/test
-cp ../terraform.tfvars.example terraform.tfvars
+# Working with DEVTEST environment
+cd gcp/envs/devtest
 gcloud config set project my-project-test
 terraform init -backend-config=backend.hcl
 terraform plan
@@ -248,24 +349,15 @@ terraform apply
 
 # Switching to PROD environment
 cd ../prod
-cp ../terraform.tfvars.example terraform.tfvars
-gcloud config set project my-project-prod
+gcloud config set project my-company-prod
 terraform init -backend-config=backend.hcl
 terraform plan
 terraform apply
 ```
 
-### Environment-Specific Configuration
-
-Each environment has its own `terraform.tfvars` file with environment-specific values:
-
-- **dev**: Development environment (smaller instances, fewer resources)
-- **test**: Testing environment (similar to prod but isolated)
-- **prod**: Production environment (full-scale resources)
-
 ---
 
-## 🛠️ Common Terraform Commands
+## Common Terraform Commands
 
 ### Initialization
 
@@ -330,21 +422,25 @@ terraform state push terraform.tfstate
 ### Importing Existing Resources
 
 ```bash
+# Import a VPC network
+terraform import 'module.gcp.module.network.google_compute_network.this["vpc-name"]' \
+  projects/PROJECT_ID/global/networks/VPC_NAME
+
+# Import a subnet (note the new key format: "vpc-name/subnet-name")
+terraform import 'module.gcp.module.network.google_compute_subnetwork.this["vpc-name/subnet-name"]' \
+  projects/PROJECT_ID/regions/REGION/subnetworks/SUBNET_NAME
+
+# Import a firewall rule
+terraform import 'module.gcp.module.network.google_compute_firewall.this["vpc-name/firewall-name"]' \
+  projects/PROJECT_ID/global/firewalls/FIREWALL_NAME
+
 # Import a VM instance
 terraform import 'module.gcp.module.compute.google_compute_instance.this["vm-name"]' \
   projects/PROJECT_ID/zones/ZONE/instances/INSTANCE_NAME
 
 # Import a GCS bucket
 terraform import 'module.gcp.module.storage.google_storage_bucket.this["bucket-name"]' \
-  projects/PROJECT_ID/buckets/BUCKET_NAME
-
-# Import a subnet
-terraform import 'module.gcp.module.network.google_compute_subnetwork.this["subnet-name"]' \
-  projects/PROJECT_ID/regions/REGION/subnetworks/SUBNET_NAME
-
-# Import a load balancer forwarding rule
-terraform import 'module.gcp.module.lb.google_compute_global_forwarding_rule.http["lb-name"]' \
-  projects/PROJECT_ID/global/forwardingRules/RULE_NAME
+  PROJECT_ID/BUCKET_NAME
 ```
 
 ### Validation and Formatting
@@ -376,25 +472,9 @@ terraform destroy -target=module.gcp.module.compute.google_compute_instance.this
 terraform plan -destroy
 ```
 
-### Workspace Management
-
-```bash
-# List workspaces
-terraform workspace list
-
-# Create a new workspace
-terraform workspace new WORKSPACE_NAME
-
-# Switch workspace
-terraform workspace select WORKSPACE_NAME
-
-# Show current workspace
-terraform workspace show
-```
-
 ---
 
-## 🔧 Troubleshooting
+## Troubleshooting
 
 ### State Lock Issues
 
@@ -458,172 +538,58 @@ unset TF_LOG_PATH
 
 ---
 
-## 📝 Best Practices
+## Best Practices
 
 ### 1. State Management
 
-- ✅ Always use remote state (GCS backend)
-- ✅ Enable versioning on state bucket
-- ✅ Never edit state files manually
-- ✅ Use state locking to prevent concurrent modifications
+- Always use remote state (GCS backend)
+- Enable versioning on state bucket
+- Never edit state files manually
+- Use state locking to prevent concurrent modifications
 
 ### 2. Code Organization
 
-- ✅ Use modules for reusable components
-- ✅ Keep environment-specific values in `terraform.tfvars`
-- ✅ Use meaningful resource names
-- ✅ Add comments for complex configurations
+- Use modules for reusable components
+- Keep environment-specific values in `terraform.tfvars`
+- Use meaningful resource names
+- Add comments for complex configurations
 
 ### 3. Security
 
-- ✅ Never commit `terraform.tfvars` to git (use `.gitignore`)
-- ✅ Use service accounts with minimal permissions
-- ✅ Rotate credentials regularly
-- ✅ Use GCP-managed SSL certificates when possible
+- Never commit `terraform.tfvars` to git (use `.gitignore`)
+- Use service accounts with minimal permissions
+- Rotate credentials regularly
+- Use GCP-managed SSL certificates when possible
+- Restrict SSH access to IAP ranges only
 
 ### 4. Change Management
 
-- ✅ Always run `terraform plan` before `apply`
-- ✅ Review plans carefully, especially for production
-- ✅ Use `-target` for surgical changes
-- ✅ Test changes in dev/test before prod
+- Always run `terraform plan` before `apply`
+- Review plans carefully, especially for production
+- Use `-target` for surgical changes
+- Test changes in devtest before prod
 
 ### 5. Lifecycle Management
 
-- ✅ Use `lifecycle` blocks to prevent accidental deletions
-- ✅ Use `ignore_changes` for externally managed attributes
-- ✅ Tag resources for cost tracking and organization
+- Use `lifecycle` blocks to prevent accidental deletions
+- Use `ignore_changes` for externally managed attributes
+- Tag resources for cost tracking and organization
 
 ---
 
-## 🔍 Common Use Cases
+## Module Renaming and State Migration
 
-### Adding a New VM Instance
-
-1. Add configuration to `terraform.tfvars`:
-
-   ```hcl
-   instances = [
-     # ... existing VMs ...
-     {
-       name                  = "new-vm"
-       machine_type          = "e2-medium"
-       zone                  = "asia-southeast1-a"
-       region                = "asia-southeast1"
-       image_family          = "ubuntu-2404-lts-amd64"
-       image_project         = "ubuntu-os-cloud"
-       disk_size             = 100
-       disk_type             = "pd-balanced"
-       network_tags          = ["web-server"]
-       external_ip           = true
-       network               = "my-vpc"
-       subnetwork            = "my-subnet"
-       startup_script_file   = "../../scripts/install-docker.sh"
-     }
-   ]
-   ```
-
-2. Apply changes:
-   ```bash
-   terraform plan
-   terraform apply
-   ```
-
-### Importing Existing Infrastructure
-
-See the [Importing Existing Resources](#importing-existing-resources) section above for detailed import commands.
-
-### Updating Load Balancer Configuration
-
-1. Modify `load_balancers` in `terraform.tfvars`
-2. Run `terraform plan` to preview changes
-3. Apply changes: `terraform apply`
-
-### Managing Multiple Environments
-
-Use separate directories for each environment and switch GCP projects:
-
-```bash
-# Development
-cd gcp/envs/dev
-gcloud config set project my-project-dev
-terraform init -backend-config=backend.hcl
-terraform apply
-
-# Test
-cd gcp/envs/test
-gcloud config set project my-project-test
-terraform init -backend-config=backend.hcl
-terraform apply
-
-# Production
-cd gcp/envs/prod
-gcloud config set project my-company-prod
-terraform init -backend-config=backend.hcl
-terraform apply
-```
-
----
-
-## 📋 Naming Conventions
-
-### Module Names
-
-| Module | Directory | Description |
-|--------|-----------|-------------|
-| network | `modules/network/` | VPC, subnets, firewalls |
-| nat | `modules/nat/` | Cloud NAT and Router |
-| compute | `modules/compute/` | Compute Engine VMs and instance groups |
-| iam | `modules/iam/` | Service accounts and IAM |
-| storage | `modules/storage/` | Cloud Storage buckets |
-| lb | `modules/lb/` | Load Balancers |
-
-### Variable Names
-
-Variables follow the `<resource>s` naming pattern (plural form):
-
-| Variable | Description |
-|----------|-------------|
-| `subnets` | List of subnet configurations |
-| `firewalls` | List of firewall rules |
-| `nats` | List of NAT configurations |
-| `buckets` | List of GCS bucket configurations |
-| `instances` | List of VM instance configurations |
-| `instance_groups` | List of instance group configurations |
-| `load_balancers` | List of load balancer configurations |
-| `service_accounts` | List of service account configurations |
-| `iam_bindings` | List of IAM binding configurations |
-
----
-
-## 🔄 Module Renaming and State Migration
-
-If you need to rename modules (e.g., from `gcs` to `storage`), you must migrate the Terraform state to avoid resource recreation.
-
-### State Migration Commands
-
-```bash
-cd gcp/envs/YOUR_ENVIRONMENT
-
-# Migrate storage module (gcs → storage)
-terraform state mv 'module.gcp.module.gcs' 'module.gcp.module.storage'
-
-# Migrate compute module (gce → compute)
-terraform state mv 'module.gcp.module.gce' 'module.gcp.module.compute'
-
-# Verify no resource changes
-terraform plan
-```
+If you need to migrate resources after module or variable structure changes, use `terraform state mv`.
 
 ### Important Notes
 
 - Run state migration commands for **each environment** separately
 - Always backup state before migration: `terraform state pull > backup.tfstate`
-- Verify with `terraform plan` after migration (should show no resource changes)
+- Verify with `terraform plan` after migration (should show no resource recreation)
 
 ---
 
-## 📚 Additional Resources
+## Additional Resources
 
 - [Terraform GCP Provider Documentation](https://registry.terraform.io/providers/hashicorp/google/latest/docs)
 - [GCP Best Practices](https://cloud.google.com/docs/terraform/best-practices-for-terraform)
@@ -632,7 +598,7 @@ terraform plan
 
 ---
 
-## 🆘 Getting Help
+## Getting Help
 
 If you encounter issues:
 
@@ -640,7 +606,3 @@ If you encounter issues:
 2. Review Terraform logs (`TF_LOG=DEBUG`)
 3. Consult the [GCP Provider Documentation](https://registry.terraform.io/providers/hashicorp/google/latest/docs)
 4. Check GCP Console for resource status
-
----
-
-## 📄 License

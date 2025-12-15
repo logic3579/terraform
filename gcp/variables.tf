@@ -1,10 +1,10 @@
 variable "env" {
-  description = "Environment name (e.g. dev, staging, prod)"
+  description = "Environment name (e.g. dev, test, devtest, uat, prod)"
   type        = string
 
   validation {
-    condition     = contains(["dev", "staging", "test", "uat", "prod", "production"], var.env)
-    error_message = "Environment must be one of: dev, staging, test, uat, prod, production."
+    condition     = contains(["dev", "test", "devtest", "uat", "prod"], var.env)
+    error_message = "Environment must be one of: dev, test, devtest, uat, prod."
   }
 }
 
@@ -44,86 +44,60 @@ variable "zone" {
   }
 }
 
-variable "network_name" {
-  description = "VPC network name"
-  type        = string
-
-  validation {
-    condition     = can(regex("^[a-z][a-z0-9-]{0,61}[a-z0-9]$", var.network_name)) || can(regex("^[a-z]$", var.network_name))
-    error_message = "Network name must be 1-63 characters, start with a lowercase letter, end with a letter or number, and contain only lowercase letters, numbers, and hyphens."
-  }
-}
-
-variable "subnets" {
-  description = "List of subnet configurations"
+variable "networks" {
+  description = "List of VPC network configurations with their subnets and firewalls"
   type = list(object({
-    name   = string
-    cidr   = string
-    region = string
-  }))
-
-  validation {
-    condition = alltrue([
-      for subnet in var.subnets :
-      can(cidrhost(subnet.cidr, 0))
-    ])
-    error_message = "All subnet CIDR blocks must be valid CIDR notation (e.g., 10.0.0.0/24)."
-  }
-
-  validation {
-    condition = alltrue([
-      for subnet in var.subnets :
-      can(regex("^[a-z]+-[a-z]+[0-9]+$", subnet.region))
-    ])
-    error_message = "Subnet region must be a valid GCP region format (e.g., us-central1, asia-southeast1)."
-  }
-}
-
-variable "firewalls" {
-  description = "Firewall rules for this environment"
-  type = list(object({
-    name                    = string
-    description             = optional(string)
-    direction               = string
-    priority                = optional(number)
-    source_ranges           = optional(list(string))
-    destination_ranges      = optional(list(string))
-    source_tags             = optional(list(string))
-    target_tags             = optional(list(string))
-    target_service_accounts = optional(list(string))
-    allow = list(object({
-      protocol = string
-      ports    = optional(list(string))
-    }))
-    disabled = optional(bool)
+    name = string
+    subnets = optional(list(object({
+      name   = string
+      cidr   = string
+      region = string
+    })), [])
+    firewalls = optional(list(object({
+      name                    = string
+      description             = optional(string)
+      direction               = string
+      priority                = optional(number)
+      source_ranges           = optional(list(string))
+      destination_ranges      = optional(list(string))
+      source_tags             = optional(list(string))
+      target_tags             = optional(list(string))
+      target_service_accounts = optional(list(string))
+      allow = list(object({
+        protocol = string
+        ports    = optional(list(string))
+      }))
+      disabled = optional(bool)
+    })), [])
   }))
   default = []
 
   validation {
     condition = alltrue([
-      for fw in var.firewalls :
-      contains(["INGRESS", "EGRESS"], fw.direction)
+      for network in var.networks :
+      can(regex("^[a-z][a-z0-9-]{0,61}[a-z0-9]$", network.name)) || can(regex("^[a-z]$", network.name))
     ])
+    error_message = "Network name must be 1-63 characters, start with a lowercase letter, end with a letter or number, and contain only lowercase letters, numbers, and hyphens."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for network in var.networks : [
+        for subnet in coalesce(network.subnets, []) :
+        can(cidrhost(subnet.cidr, 0))
+      ]
+    ]))
+    error_message = "All subnet CIDR blocks must be valid CIDR notation (e.g., 10.0.0.0/24)."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for network in var.networks : [
+        for fw in coalesce(network.firewalls, []) :
+        contains(["INGRESS", "EGRESS"], fw.direction)
+      ]
+    ]))
     error_message = "Firewall direction must be either 'INGRESS' or 'EGRESS'."
-  }
-
-  validation {
-    condition = alltrue([
-      for fw in var.firewalls :
-      fw.priority == null || (fw.priority >= 0 && fw.priority <= 65535)
-    ])
-    error_message = "Firewall priority must be between 0 and 65535."
-  }
-
-  validation {
-    condition = alltrue([
-      for fw in var.firewalls :
-      alltrue([
-        for rule in fw.allow :
-        contains(["tcp", "udp", "icmp", "esp", "ah", "sctp", "ipip", "all"], lower(rule.protocol))
-      ])
-    ])
-    error_message = "Firewall protocol must be one of: tcp, udp, icmp, esp, ah, sctp, ipip, all."
   }
 }
 

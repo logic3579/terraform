@@ -1,2 +1,2 @@
 bucket = "revosurge-uat-loki-chunks"
-prefix = "gcp/test"
+prefix = "gcp/devtest"
