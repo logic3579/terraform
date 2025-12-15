@@ -3,6 +3,12 @@ variable "project_id" {
   type        = string
 }
 
+variable "labels" {
+  description = "Labels to apply to all resources"
+  type        = map(string)
+  default     = {}
+}
+
 variable "load_balancers" {
   description = "List of load balancer configurations"
   type = list(object({
@@ -41,12 +47,10 @@ variable "load_balancers" {
       log_sample_rate       = optional(number, 1.0) # Log sampling rate (0.0-1.0)
     })
 
-    # SSL configuration (optional)
+    # SSL configuration (optional, uses GCP-managed certificates)
     ssl_config = optional(object({
       enabled             = bool
-      certificate_domains = list(string)
-      private_key         = optional(string)
-      certificate         = optional(string)
+      certificate_domains = list(string) # Domains for GCP-managed SSL certificate
     }))
   }))
   default = []

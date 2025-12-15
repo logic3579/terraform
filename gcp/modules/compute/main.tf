@@ -25,7 +25,9 @@ resource "google_compute_instance" "this" {
   machine_type = each.value.machine_type
   zone         = each.value.zone
   tags         = each.value.network_tags
+  labels       = merge(var.labels, each.value.labels)
 
+  deletion_protection       = each.value.deletion_protection
   allow_stopping_for_update = true
 
   boot_disk {
@@ -59,7 +61,7 @@ resource "google_compute_instance" "this" {
   # Uses default Compute Engine SA if not specified
   service_account {
     email  = coalesce(each.value.service_account_email, local.default_compute_sa)
-    scopes = coalesce(each.value.service_account_scopes, ["https://www.googleapis.com/auth/cloud-platform"])
+    scopes = each.value.service_account_scopes
   }
 
   scheduling {

@@ -3,6 +3,12 @@ variable "project_id" {
   type        = string
 }
 
+variable "labels" {
+  description = "Labels to apply to all resources"
+  type        = map(string)
+  default     = {}
+}
+
 variable "nats" {
   description = "List of NAT configurations"
   type = list(object({

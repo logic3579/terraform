@@ -13,6 +13,7 @@ module "network" {
 module "nat" {
   source     = "./modules/nat"
   project_id = var.project_id
+  labels     = var.labels
   nats       = var.nats
 }
 
@@ -36,6 +37,7 @@ module "storage" {
 module "compute" {
   source          = "./modules/compute"
   project_id      = var.project_id
+  labels          = var.labels
   instances       = var.instances
   instance_groups = var.instance_groups
 }
@@ -58,5 +60,6 @@ locals {
 module "lb" {
   source         = "./modules/lb"
   project_id     = var.project_id
+  labels         = var.labels
   load_balancers = local.load_balancers_with_self_links
 }

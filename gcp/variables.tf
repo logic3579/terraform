@@ -272,10 +272,14 @@ variable "instances" {
     # Preemptible VM configuration
     preemptible = optional(bool, false)
 
+    # Deletion protection (prevents accidental deletion via API/Console)
+    deletion_protection = optional(bool, false)
+
     # Startup script configuration (choose one)
     startup_script      = optional(string) # Inline script
     startup_script_file = optional(string) # Path to script file
     metadata            = optional(map(string), {})
+    labels              = optional(map(string), {})
   }))
   default = []
 
@@ -365,12 +369,10 @@ variable "load_balancers" {
       log_sample_rate       = optional(number, 1.0)
     })
 
-    # SSL configuration (optional)
+    # SSL configuration (optional, uses GCP-managed certificates)
     ssl_config = optional(object({
       enabled             = bool
-      certificate_domains = list(string)
-      private_key         = optional(string)
-      certificate         = optional(string)
+      certificate_domains = list(string) # Domains for GCP-managed SSL certificate
     }))
   }))
   default = []

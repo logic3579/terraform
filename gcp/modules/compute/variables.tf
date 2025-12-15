@@ -3,6 +3,12 @@ variable "project_id" {
   type        = string
 }
 
+variable "labels" {
+  description = "Labels to apply to all resources"
+  type        = map(string)
+  default     = {}
+}
+
 variable "instances" {
   description = "List of VM instances to create"
   type = list(object({
@@ -14,7 +20,7 @@ variable "instances" {
     image_project = string
     disk_size     = number
     disk_type     = string
-    network_tags  = optional(list(string))
+    network_tags  = list(string)
     external_ip   = optional(bool, false)
     network       = string
     subnetwork    = string
@@ -33,10 +39,14 @@ variable "instances" {
     # Preemptible VM configuration
     preemptible = optional(bool, false)
 
+    # Deletion protection (prevents accidental deletion via API/Console)
+    deletion_protection = optional(bool, false)
+
     # Startup script configuration (choose one)
     startup_script      = optional(string) # Inline script
     startup_script_file = optional(string) # Path to script file
     metadata            = optional(map(string), {})
+    labels              = optional(map(string), {})
   }))
   default = []
 

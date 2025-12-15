@@ -12,3 +12,8 @@ output "nat_names" {
   description = "Map of NAT names"
   value       = { for k, v in google_compute_router_nat.this : k => v.name }
 }
+
+output "nat_ip_addresses" {
+  description = "Map of NAT external IP addresses (only for MANUAL_ONLY mode)"
+  value       = { for k, v in google_compute_address.nat_ip : k => v.address }
+}

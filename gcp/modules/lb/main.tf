@@ -10,6 +10,7 @@ resource "google_compute_global_address" "this" {
   name         = "${each.key}-ip"
   ip_version   = "IPV4"
   address_type = "EXTERNAL"
+  labels       = var.labels
 }
 
 # Health check (TCP)
@@ -85,7 +86,7 @@ resource "google_compute_target_http_proxy" "this" {
 
   project = var.project_id
   name    = "${each.value.name}-http-proxy"
-  url_map = google_compute_url_map.this[each.key].id
+  url_map = google_compute_url_map.this[each.value.name].id
 }
 
 # HTTP forwarding rule
@@ -95,39 +96,22 @@ resource "google_compute_global_forwarding_rule" "http" {
   project               = var.project_id
   name                  = "${each.value.name}-http-rule"
   load_balancing_scheme = "EXTERNAL_MANAGED" # Use new Application Load Balancer (not Classic)
-  target                = google_compute_target_http_proxy.this[each.key].id
+  target                = google_compute_target_http_proxy.this[each.value.name].id
   port_range            = tostring(each.value.http_port)
-  ip_address            = google_compute_global_address.this[coalesce(each.value.global_address_name, each.key)].address
+  ip_address            = google_compute_global_address.this[coalesce(each.value.global_address_name, each.value.name)].address
+  labels                = var.labels
 }
 
-# Self-managed SSL certificate (when private_key and certificate are provided)
-resource "google_compute_ssl_certificate" "this" {
-  for_each = {
-    for lb in var.load_balancers :
-    lb.name => lb
-    if lb.ssl_config != null && lb.ssl_config.enabled && lb.ssl_config.private_key != null && lb.ssl_config.certificate != null
-  }
-
-  project     = var.project_id
-  name        = "${each.key}-ssl-cert"
-  private_key = each.value.ssl_config.private_key
-  certificate = each.value.ssl_config.certificate
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-# Google-managed SSL certificate (when only certificate_domains are provided)
+# Google-managed SSL certificate
 resource "google_compute_managed_ssl_certificate" "this" {
   for_each = {
     for lb in var.load_balancers :
     lb.name => lb
-    if lb.ssl_config != null && lb.ssl_config.enabled && lb.ssl_config.private_key == null && lb.ssl_config.certificate == null
+    if lb.ssl_config != null && lb.ssl_config.enabled
   }
 
   project = var.project_id
-  name    = "${each.key}-managed-ssl-cert"
+  name    = "${each.value.name}-managed-ssl-cert"
 
   managed {
     domains = each.value.ssl_config.certificate_domains
@@ -142,14 +126,10 @@ resource "google_compute_managed_ssl_certificate" "this" {
 resource "google_compute_target_https_proxy" "this" {
   for_each = { for lb in var.load_balancers : lb.name => lb if lb.ssl_config != null && lb.ssl_config.enabled }
 
-  project = var.project_id
-  name    = "${each.key}-https-proxy"
-  url_map = google_compute_url_map.this[each.key].id
-
-  # Use self-managed certificate if available, otherwise use Google-managed certificate
-  ssl_certificates = [
-    try(google_compute_ssl_certificate.this[each.key].id, google_compute_managed_ssl_certificate.this[each.key].id)
-  ]
+  project          = var.project_id
+  name             = "${each.value.name}-https-proxy"
+  url_map          = google_compute_url_map.this[each.value.name].id
+  ssl_certificates = [google_compute_managed_ssl_certificate.this[each.value.name].id]
 }
 
 # HTTPS forwarding rule (optional)
@@ -157,9 +137,10 @@ resource "google_compute_global_forwarding_rule" "https" {
   for_each = { for lb in var.load_balancers : lb.name => lb if lb.ssl_config != null && lb.ssl_config.enabled }
 
   project               = var.project_id
-  name                  = "${each.key}-https-rule"
+  name                  = "${each.value.name}-https-rule"
   load_balancing_scheme = "EXTERNAL_MANAGED" # Use new Application Load Balancer (not Classic)
-  target                = google_compute_target_https_proxy.this[each.key].id
+  target                = google_compute_target_https_proxy.this[each.value.name].id
   port_range            = tostring(each.value.https_port)
-  ip_address            = google_compute_global_address.this[coalesce(each.value.global_address_name, each.key)].address
+  ip_address            = google_compute_global_address.this[coalesce(each.value.global_address_name, each.value.name)].address
+  labels                = var.labels
 }

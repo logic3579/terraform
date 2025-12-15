@@ -23,6 +23,7 @@ resource "google_compute_address" "nat_ip" {
   name         = "${each.value.name}-nat-ip"
   region       = each.value.region
   address_type = "EXTERNAL"
+  labels       = var.labels
 }
 
 resource "google_compute_router_nat" "this" {

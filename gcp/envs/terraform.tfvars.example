@@ -224,6 +224,7 @@ instances = [
     subnetwork          = "web-subnet"
     startup_script_file = "../../scripts/install-docker.sh"
     preemptible         = false
+    deletion_protection = true
   },
 ]
 
