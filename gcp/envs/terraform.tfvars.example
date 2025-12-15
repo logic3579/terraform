@@ -196,7 +196,8 @@ instances = [
     disk_type             = "pd-standard"
     network               = "my-project-test-vpc"
     subnetwork            = "app-subnet"
-    startup_script_file = "../../scripts/install-docker.sh"
+    startup_script_file   = "../../scripts/install-docker.sh"
+    preemptible           = false
   }
 ]
 

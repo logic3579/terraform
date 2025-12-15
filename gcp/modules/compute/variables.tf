@@ -30,6 +30,9 @@ variable "instances" {
       "https://www.googleapis.com/auth/trace.append",
     ])
 
+    # Preemptible VM configuration
+    preemptible = optional(bool, false)
+
     # Startup script configuration (choose one)
     startup_script      = optional(string) # Inline script
     startup_script_file = optional(string) # Path to script file

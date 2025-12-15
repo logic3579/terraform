@@ -63,8 +63,8 @@ resource "google_compute_instance" "this" {
   }
 
   scheduling {
-    preemptible       = false
-    automatic_restart = true
+    preemptible       = each.value.preemptible
+    automatic_restart = each.value.preemptible ? false : true
   }
 
   shielded_instance_config {

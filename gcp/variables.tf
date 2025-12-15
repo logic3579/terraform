@@ -1,6 +1,11 @@
 variable "env" {
   description = "Environment name (e.g. dev, staging, prod)"
   type        = string
+
+  validation {
+    condition     = contains(["dev", "staging", "test", "uat", "prod", "production"], var.env)
+    error_message = "Environment must be one of: dev, staging, test, uat, prod, production."
+  }
 }
 
 variable "labels" {
@@ -12,21 +17,41 @@ variable "labels" {
 variable "project_id" {
   description = "GCP project ID"
   type        = string
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", var.project_id))
+    error_message = "Project ID must be 6-30 characters, start with a lowercase letter, and contain only lowercase letters, numbers, and hyphens."
+  }
 }
 
 variable "region" {
   description = "GCP region"
   type        = string
+
+  validation {
+    condition     = can(regex("^[a-z]+-[a-z]+[0-9]+$", var.region))
+    error_message = "Region must be a valid GCP region format (e.g., us-central1, asia-southeast1)."
+  }
 }
 
 variable "zone" {
   description = "Default GCE zone for compute resources"
   type        = string
+
+  validation {
+    condition     = can(regex("^[a-z]+-[a-z]+[0-9]+-[a-z]$", var.zone))
+    error_message = "Zone must be a valid GCP zone format (e.g., us-central1-a, asia-southeast1-b)."
+  }
 }
 
 variable "network_name" {
   description = "VPC network name"
   type        = string
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{0,61}[a-z0-9]$", var.network_name)) || can(regex("^[a-z]$", var.network_name))
+    error_message = "Network name must be 1-63 characters, start with a lowercase letter, end with a letter or number, and contain only lowercase letters, numbers, and hyphens."
+  }
 }
 
 variable "subnets" {
@@ -36,6 +61,22 @@ variable "subnets" {
     cidr   = string
     region = string
   }))
+
+  validation {
+    condition = alltrue([
+      for subnet in var.subnets :
+      can(cidrhost(subnet.cidr, 0))
+    ])
+    error_message = "All subnet CIDR blocks must be valid CIDR notation (e.g., 10.0.0.0/24)."
+  }
+
+  validation {
+    condition = alltrue([
+      for subnet in var.subnets :
+      can(regex("^[a-z]+-[a-z]+[0-9]+$", subnet.region))
+    ])
+    error_message = "Subnet region must be a valid GCP region format (e.g., us-central1, asia-southeast1)."
+  }
 }
 
 variable "firewalls" {
@@ -57,6 +98,33 @@ variable "firewalls" {
     disabled = optional(bool)
   }))
   default = []
+
+  validation {
+    condition = alltrue([
+      for fw in var.firewalls :
+      contains(["INGRESS", "EGRESS"], fw.direction)
+    ])
+    error_message = "Firewall direction must be either 'INGRESS' or 'EGRESS'."
+  }
+
+  validation {
+    condition = alltrue([
+      for fw in var.firewalls :
+      fw.priority == null || (fw.priority >= 0 && fw.priority <= 65535)
+    ])
+    error_message = "Firewall priority must be between 0 and 65535."
+  }
+
+  validation {
+    condition = alltrue([
+      for fw in var.firewalls :
+      alltrue([
+        for rule in fw.allow :
+        contains(["tcp", "udp", "icmp", "esp", "ah", "sctp", "ipip", "all"], lower(rule.protocol))
+      ])
+    ])
+    error_message = "Firewall protocol must be one of: tcp, udp, icmp, esp, ah, sctp, ipip, all."
+  }
 }
 
 variable "nats" {
@@ -77,6 +145,34 @@ variable "nats" {
     }))
   }))
   default = []
+
+  validation {
+    condition = alltrue([
+      for nat in var.nats :
+      contains(["AUTO_ONLY", "MANUAL_ONLY"], nat.nat_ip_allocate_option)
+    ])
+    error_message = "NAT IP allocate option must be either 'AUTO_ONLY' or 'MANUAL_ONLY'."
+  }
+
+  validation {
+    condition = alltrue([
+      for nat in var.nats :
+      contains([
+        "ALL_SUBNETWORKS_ALL_IP_RANGES",
+        "ALL_SUBNETWORKS_ALL_PRIMARY_IP_RANGES",
+        "LIST_OF_SUBNETWORKS"
+      ], nat.source_subnetwork_ip_ranges_to_nat)
+    ])
+    error_message = "Source subnetwork IP ranges must be one of: ALL_SUBNETWORKS_ALL_IP_RANGES, ALL_SUBNETWORKS_ALL_PRIMARY_IP_RANGES, LIST_OF_SUBNETWORKS."
+  }
+
+  validation {
+    condition = alltrue([
+      for nat in var.nats :
+      nat.min_ports_per_vm >= 64 && nat.min_ports_per_vm <= 65536
+    ])
+    error_message = "Min ports per VM must be between 64 and 65536."
+  }
 }
 
 variable "service_accounts" {
@@ -87,6 +183,14 @@ variable "service_accounts" {
     description  = optional(string)
   }))
   default = []
+
+  validation {
+    condition = alltrue([
+      for sa in var.service_accounts :
+      can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", sa.account_id))
+    ])
+    error_message = "Service account ID must be 6-30 characters, start with a lowercase letter, and contain only lowercase letters, numbers, and hyphens."
+  }
 }
 
 variable "iam_bindings" {
@@ -96,6 +200,25 @@ variable "iam_bindings" {
     roles                 = list(string)
   }))
   default = []
+
+  validation {
+    condition = alltrue([
+      for binding in var.iam_bindings :
+      can(regex("^[a-z][a-z0-9-]+@[a-z][a-z0-9-]+\\.iam\\.gserviceaccount\\.com$", binding.service_account_email))
+    ])
+    error_message = "Service account email must be a valid GCP service account email format."
+  }
+
+  validation {
+    condition = alltrue([
+      for binding in var.iam_bindings :
+      alltrue([
+        for role in binding.roles :
+        can(regex("^roles/", role)) || can(regex("^projects/", role)) || can(regex("^organizations/", role))
+      ])
+    ])
+    error_message = "IAM roles must start with 'roles/', 'projects/', or 'organizations/'."
+  }
 }
 
 variable "buckets" {
@@ -119,6 +242,30 @@ variable "buckets" {
     })))
   }))
   default = []
+
+  validation {
+    condition = alltrue([
+      for bucket in var.buckets :
+      can(regex("^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$", bucket.name)) || can(regex("^[a-z0-9]$", bucket.name))
+    ])
+    error_message = "Bucket name must be 3-63 characters, start and end with a letter or number, and contain only lowercase letters, numbers, hyphens, underscores, and dots."
+  }
+
+  validation {
+    condition = alltrue([
+      for bucket in var.buckets :
+      bucket.storage_class == null || contains(["STANDARD", "NEARLINE", "COLDLINE", "ARCHIVE"], bucket.storage_class)
+    ])
+    error_message = "Storage class must be one of: STANDARD, NEARLINE, COLDLINE, ARCHIVE."
+  }
+
+  validation {
+    condition = alltrue([
+      for bucket in var.buckets :
+      bucket.public_access_prevention == null || contains(["enforced", "inherited"], bucket.public_access_prevention)
+    ])
+    error_message = "Public access prevention must be either 'enforced' or 'inherited'."
+  }
 }
 
 variable "instances" {
@@ -128,7 +275,7 @@ variable "instances" {
     machine_type  = string
     region        = string
     zone          = string
-    network_tags  = optional(list(string))
+    network_tags  = list(string)
     external_ip   = optional(bool, false)
     image_family  = string
     image_project = string
@@ -148,12 +295,47 @@ variable "instances" {
       "https://www.googleapis.com/auth/trace.append",
     ])
 
+    # Preemptible VM configuration
+    preemptible = optional(bool, false)
+
     # Startup script configuration (choose one)
     startup_script      = optional(string) # Inline script
     startup_script_file = optional(string) # Path to script file
     metadata            = optional(map(string), {})
   }))
   default = []
+
+  validation {
+    condition = alltrue([
+      for vm in var.instances :
+      contains(["pd-standard", "pd-balanced", "pd-ssd", "pd-extreme"], vm.disk_type)
+    ])
+    error_message = "Disk type must be one of: pd-standard, pd-balanced, pd-ssd, pd-extreme."
+  }
+
+  validation {
+    condition = alltrue([
+      for vm in var.instances :
+      vm.disk_size >= 10 && vm.disk_size <= 65536
+    ])
+    error_message = "Disk size must be between 10 and 65536 GB."
+  }
+
+  validation {
+    condition = alltrue([
+      for vm in var.instances :
+      !(vm.startup_script != null && vm.startup_script_file != null)
+    ])
+    error_message = "Cannot specify both startup_script and startup_script_file. Choose one."
+  }
+
+  validation {
+    condition = alltrue([
+      for vm in var.instances :
+      can(regex("^[a-z]+-[a-z]+[0-9]+-[a-z]$", vm.zone))
+    ])
+    error_message = "Instance zone must be a valid GCP zone format (e.g., us-central1-a)."
+  }
 }
 
 variable "instance_groups" {
@@ -218,4 +400,68 @@ variable "load_balancers" {
     }))
   }))
   default = []
+
+  validation {
+    condition = alltrue([
+      for lb in var.load_balancers :
+      contains(["UTILIZATION", "RATE"], lb.backend_service.balancing_mode)
+    ])
+    error_message = "Backend service balancing_mode must be either 'UTILIZATION' or 'RATE'."
+  }
+
+  validation {
+    condition = alltrue([
+      for lb in var.load_balancers :
+      contains(["HTTP", "HTTPS", "HTTP2", "TCP", "SSL"], lb.backend_service.protocol)
+    ])
+    error_message = "Backend service protocol must be one of: HTTP, HTTPS, HTTP2, TCP, SSL."
+  }
+
+  validation {
+    condition = alltrue([
+      for lb in var.load_balancers :
+      contains(["NONE", "CLIENT_IP", "CLIENT_IP_PORT_PROTO", "CLIENT_IP_PROTO", "GENERATED_COOKIE", "HEADER_FIELD", "HTTP_COOKIE"], lb.backend_service.session_affinity)
+    ])
+    error_message = "Session affinity must be one of: NONE, CLIENT_IP, CLIENT_IP_PORT_PROTO, CLIENT_IP_PROTO, GENERATED_COOKIE, HEADER_FIELD, HTTP_COOKIE."
+  }
+
+  validation {
+    condition = alltrue([
+      for lb in var.load_balancers :
+      lb.backend_service.max_utilization >= 0 && lb.backend_service.max_utilization <= 1
+    ])
+    error_message = "Backend service max_utilization must be between 0 and 1."
+  }
+
+  validation {
+    condition = alltrue([
+      for lb in var.load_balancers :
+      lb.backend_service.log_sample_rate >= 0 && lb.backend_service.log_sample_rate <= 1
+    ])
+    error_message = "Backend service log_sample_rate must be between 0 and 1."
+  }
+
+  validation {
+    condition = alltrue([
+      for lb in var.load_balancers :
+      lb.http_port >= 1 && lb.http_port <= 65535
+    ])
+    error_message = "HTTP port must be between 1 and 65535."
+  }
+
+  validation {
+    condition = alltrue([
+      for lb in var.load_balancers :
+      lb.https_port >= 1 && lb.https_port <= 65535
+    ])
+    error_message = "HTTPS port must be between 1 and 65535."
+  }
+
+  validation {
+    condition = alltrue([
+      for lb in var.load_balancers :
+      lb.health_check.port >= 1 && lb.health_check.port <= 65535
+    ])
+    error_message = "Health check port must be between 1 and 65535."
+  }
 }
