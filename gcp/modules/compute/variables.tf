@@ -16,12 +16,12 @@ variable "instances" {
     machine_type  = string
     region        = string
     zone          = string
+    network_tags  = list(string)
+    external_ip   = optional(bool, false)
     image_family  = string
     image_project = string
     disk_size     = number
     disk_type     = string
-    network_tags  = list(string)
-    external_ip   = optional(bool, false)
     network       = string
     subnetwork    = string
 

@@ -20,14 +20,18 @@ variable "load_balancers" {
     http_port  = optional(number, 80)
     https_port = optional(number, 443)
 
-    # Health check configuration (TCP)
+    # Health check configuration (TCP, HTTP, HTTPS)
     health_check = object({
       name                = string
+      type                = optional(string, "TCP")
       check_interval_sec  = optional(number, 5)
       timeout_sec         = optional(number, 5)
       healthy_threshold   = optional(number, 2)
       unhealthy_threshold = optional(number, 2)
       port                = optional(number, 80)
+      # HTTP/HTTPS specific
+      request_path        = optional(string, "/")
+      host                = optional(string)
     })
 
     # Backend service configuration
