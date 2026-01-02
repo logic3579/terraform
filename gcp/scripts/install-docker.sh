@@ -26,7 +26,8 @@ echo \
 apt-get update
 
 # Install specific Docker version
-VERSION_STRING="5:28.5.2-1~ubuntu.24.04~noble"
+VERSION_STRING="5:28.0.2-1~ubuntu.22.04~jammy"
+#VERSION_STRING="5:28.5.2-1~ubuntu.24.04~noble"
 apt-get install -y \
   docker-ce=$VERSION_STRING \
   docker-ce-cli=$VERSION_STRING \
