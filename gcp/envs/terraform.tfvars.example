@@ -208,6 +208,9 @@ instances = [
     disk_type     = "pd-standard"
     network       = "my-project-vpc" # Must match a network name
     subnetwork    = "app-subnet" # Must match a subnet name in the network
+    startup_script_file = "../../scripts/install-docker.sh" # Optional, meta startup script
+    preemptible         = false # Optional, default is false
+    deletion_protection = true # Optional, default is false
   },
   {
     name                = "web-server-1"
@@ -222,9 +225,6 @@ instances = [
     disk_type           = "pd-balanced"
     network             = "my-project-vpc"
     subnetwork          = "web-subnet"
-    startup_script_file = "../../scripts/install-docker.sh"
-    preemptible         = false
-    deletion_protection = true
   },
 ]
 

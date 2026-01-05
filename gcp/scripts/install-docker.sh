@@ -21,7 +21,8 @@ EOF
 
 sudo apt update
 
-# latest
-#sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-apt install containerd.io=2.2.0-2~ubuntu.22.04~jammy || apt install containerd.io=2.2.0-2~ubuntu.24.04~noble
-sudo apt install docker-ce docker-ce-cli docker-buildx-plugin docker-compose-plugin
+# latest version
+sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+## specfic version
+#VERSION_STRING=5:29.1.3-1~ubuntu.24.04~noble
+#sudo apt install docker-ce=$VERSION_STRING docker-ce-cli=$VERSION_STRING containerd.io docker-buildx-plugin docker-compose-plugin
