@@ -22,7 +22,9 @@ EOF
 sudo apt update
 
 # latest version
-sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
 ## specfic version
 #VERSION_STRING=5:29.1.3-1~ubuntu.24.04~noble
 #sudo apt install docker-ce=$VERSION_STRING docker-ce-cli=$VERSION_STRING containerd.io docker-buildx-plugin docker-compose-plugin
+
+sudo systemctl enable docker.service --now
