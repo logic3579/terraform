@@ -21,7 +21,7 @@ locals {
             "net-tools",
             "iputils-ping"
           ])
-          additional_config = coalesce(vm.cloud_init.additional_config, "")
+          additional_config = try(vm.cloud_init.additional_config, "")
         }
       ) : ""
     }
