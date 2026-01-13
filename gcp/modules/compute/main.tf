@@ -6,6 +6,26 @@ data "google_project" "current" {
 locals {
   # Default Compute Engine service account
   default_compute_sa = "${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+
+  # Cloud-init configuration processing
+  cloud_init_configs = {
+    for vm in var.instances : vm.name => {
+      enabled = vm.cloud_init != null && vm.cloud_init.enabled
+      user_data = vm.cloud_init != null && vm.cloud_init.enabled ? templatefile(
+        "${path.module}/../../templates/cloud-init.yaml.tpl",
+        {
+          hostname = coalesce(vm.cloud_init.hostname, "")
+          packages = coalesce(vm.cloud_init.packages, [
+            "htop",
+            "curl",
+            "net-tools",
+            "iputils-ping"
+          ])
+          additional_config = coalesce(vm.cloud_init.additional_config, "")
+        }
+      ) : ""
+    }
+  }
 }
 
 resource "google_compute_address" "this" {
@@ -50,12 +70,16 @@ resource "google_compute_instance" "this" {
     }
   }
 
-  # Startup script configuration - supports inline script or external file
-  metadata_startup_script = each.value.startup_script != null ? each.value.startup_script : (
-    each.value.startup_script_file != null ? file(each.value.startup_script_file) : null
-  )
+  # Startup script configuration - supports external file
+  metadata_startup_script = each.value.startup_script_file != null ? file(each.value.startup_script_file) : null
 
-  metadata = each.value.metadata
+  # Metadata configuration - supports cloud-init
+  metadata = merge(
+    coalesce(each.value.metadata, {}),
+    local.cloud_init_configs[each.key].enabled ? {
+      user-data = local.cloud_init_configs[each.key].user_data
+    } : {}
+  )
 
   # Service account configuration
   # Uses default Compute Engine SA if not specified

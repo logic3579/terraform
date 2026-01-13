@@ -30,8 +30,8 @@ variable "load_balancers" {
       unhealthy_threshold = optional(number, 2)
       port                = optional(number, 80)
       # HTTP/HTTPS specific
-      request_path        = optional(string, "/")
-      host                = optional(string)
+      request_path = optional(string, "/")
+      host         = optional(string)
     })
 
     # Backend service configuration
