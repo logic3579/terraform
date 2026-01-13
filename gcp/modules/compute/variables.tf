@@ -42,18 +42,17 @@ variable "instances" {
     # Deletion protection (prevents accidental deletion via API/Console)
     deletion_protection = optional(bool, false)
 
-    # Startup script configuration
-    startup_script_file = optional(string) # Path to script file
-    metadata            = optional(map(string), {})
-    labels              = optional(map(string), {})
+    # Metadata and labels
+    metadata = optional(map(string), {})
+    labels   = optional(map(string), {})
 
-    # Cloud-init configuration (mutually exclusive with startup_script_file)
+    # Cloud-init configuration
     cloud_init = optional(object({
-      enabled  = bool             # Enable cloud-init
-      hostname = optional(string) # Short hostname (FQDN will use GCP default)
+      enabled        = bool                 # Enable cloud-init
+      hostname       = optional(string)     # Short hostname (FQDN will use GCP default)
+      install_docker = optional(bool, true) # Install Docker from official repository (default: true)
       packages = optional(list(string), [
         "htop",
-        "curl",
         "net-tools",
         "iputils-ping"
       ])
@@ -61,16 +60,6 @@ variable "instances" {
     }))
   }))
   default = []
-
-  # Validation 1: Ensure only one initialization method is used
-  validation {
-    condition = alltrue([
-      for vm in var.instances :
-      (vm.startup_script_file != null ? 1 : 0) +
-      (vm.cloud_init != null && vm.cloud_init.enabled ? 1 : 0) <= 1
-    ])
-    error_message = "Cannot specify both startup_script_file and cloud_init. Choose one initialization method."
-  }
 
   # Validation 2: Hostname format validation
   validation {

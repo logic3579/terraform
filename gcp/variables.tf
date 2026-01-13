@@ -275,18 +275,17 @@ variable "instances" {
     # Deletion protection (prevents accidental deletion via API/Console)
     deletion_protection = optional(bool, false)
 
-    # Startup script configuration
-    startup_script_file = optional(string) # Path to script file
-    metadata            = optional(map(string), {})
-    labels              = optional(map(string), {})
+    # Metadata and labels
+    metadata = optional(map(string), {})
+    labels   = optional(map(string), {})
 
-    # Cloud-init configuration (mutually exclusive with startup_script_file)
+    # Cloud-init configuration
     cloud_init = optional(object({
-      enabled  = bool
-      hostname = optional(string)
+      enabled        = bool
+      hostname       = optional(string)
+      install_docker = optional(bool, true)
       packages = optional(list(string), [
         "htop",
-        "curl",
         "net-tools",
         "iputils-ping"
       ])
@@ -309,16 +308,6 @@ variable "instances" {
       vm.disk_size >= 10 && vm.disk_size <= 65536
     ])
     error_message = "Disk size must be between 10 and 65536 GB."
-  }
-
-  # Validation: Ensure only one initialization method is used
-  validation {
-    condition = alltrue([
-      for vm in var.instances :
-      (vm.startup_script_file != null ? 1 : 0) +
-      (vm.cloud_init != null && vm.cloud_init.enabled ? 1 : 0) <= 1
-    ])
-    error_message = "Cannot specify both startup_script_file and cloud_init. Choose one initialization method."
   }
 
   # Validation: Hostname format validation

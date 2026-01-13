@@ -61,8 +61,8 @@ gcp/
 │   ├── iam/                     # Service accounts and IAM
 │   ├── storage/                 # Cloud Storage buckets
 │   └── lb/                      # Load Balancers (HTTP/HTTPS)
-├── scripts/                     # Startup scripts for VMs
-│   └── install-docker.sh        # Docker installation script
+├── templates/                   # Configuration templates
+│   └── cloud-init.yaml.tpl      # Cloud-init template for VM initialization
 └── envs/                        # Environment-specific configurations
     ├── terraform.tfvars.example # Template for tfvars
     ├── devtest/                 # Dev + Test environment (merged)
@@ -187,7 +187,7 @@ Manages Cloud NAT for private instance internet access.
 
 ### Compute Module (`modules/compute/`)
 
-Manages Compute Engine VMs and instance groups.
+Manages Compute Engine VMs and instance groups with cloud-init support.
 
 **Resources**:
 
@@ -197,12 +197,50 @@ Manages Compute Engine VMs and instance groups.
 
 **Key Features**:
 
-- Docker pre-installed via startup script
+- **Cloud-Init Support**: Declarative VM initialization using YAML configuration
+  - Optional Docker installation from official repository (enabled by default)
+  - Configurable hostname (short name, FQDN uses GCP default)
+  - Customizable package installation (default: htop, net-tools, iputils-ping)
+  - Extensible via `additional_config` for custom cloud-init YAML
 - External IP support
 - Service account configuration
 - Named ports for load balancing
-- Shielded VM (secure boot enabled)
+- Shielded VM (secure boot, vTPM, integrity monitoring enabled)
 - Preemptible instance support
+- Deletion protection option
+
+**Cloud-Init Configuration**:
+
+```hcl
+instances = [
+  {
+    name = "my-server"
+    # ... other required fields ...
+
+    cloud_init = {
+      enabled        = true                    # Enable cloud-init
+      hostname       = "my-server"             # Optional: short hostname
+      install_docker = true                    # Optional: install Docker (default: true)
+      packages       = ["vim", "git", "jq"]    # Optional: additional packages
+      additional_config = <<-EOT               # Optional: custom cloud-init YAML
+        runcmd:
+          - docker pull nginx:latest
+          - echo "Init complete" > /var/log/init.txt
+      EOT
+    }
+  }
+]
+```
+
+**Cloud-Init Features**:
+
+- **Docker Installation**: Latest Docker CE from official repository
+  - Auto-configured with buildx and compose plugins
+  - Enabled by default (`install_docker = true`)
+  - Set `install_docker = false` to skip Docker installation
+- **Package Management**: Automatically updates package index
+- **Logging**: All cloud-init output logged to `/var/log/cloud-init-output.log`
+- **Timezone**: UTC by default
 
 ### IAM Module (`modules/iam/`)
 
@@ -259,6 +297,218 @@ Manages HTTP(S) Load Balancers.
 
 ---
 
+## Cloud-Init VM Initialization
+
+The compute module uses [cloud-init](https://cloud-init.io/) for declarative VM initialization. Cloud-init is a standard for customizing cloud instances on first boot.
+
+### How It Works
+
+1. **Template Rendering**: Terraform renders the cloud-init YAML template ([templates/cloud-init.yaml.tpl](templates/cloud-init.yaml.tpl)) with your configuration
+2. **Metadata Injection**: The rendered YAML is injected into the VM's `user-data` metadata
+3. **First Boot Execution**: Cloud-init runs on first boot and executes the configuration
+4. **Idempotency**: Subsequent metadata changes won't re-run cloud-init (use lifecycle `ignore_changes`)
+
+### Configuration Options
+
+| Field               | Type         | Default                                    | Description                                  |
+| ------------------- | ------------ | ------------------------------------------ | -------------------------------------------- |
+| `enabled`           | bool         | _required_                                 | Enable cloud-init for this instance          |
+| `hostname`          | string       | `null`                                     | Short hostname (FQDN uses GCP default)       |
+| `install_docker`    | bool         | `true`                                     | Install Docker CE from official repository   |
+| `packages`          | list(string) | `["htop", "net-tools", "iputils-ping"]`    | Additional packages to install               |
+| `additional_config` | string       | `""`                                       | Custom cloud-init YAML (appended to config)  |
+
+### Example Configurations
+
+#### Basic Setup (Docker + Default Packages)
+
+```hcl
+cloud_init = {
+  enabled  = true
+  hostname = "web-server-1"
+}
+```
+
+**Result**: VM with hostname `web-server-1`, Docker installed, default packages (htop, net-tools, iputils-ping).
+
+#### Custom Packages Without Docker
+
+```hcl
+cloud_init = {
+  enabled        = true
+  hostname       = "app-server"
+  install_docker = false  # Skip Docker installation
+  packages = [
+    "python3-pip",
+    "nginx",
+    "postgresql-client"
+  ]
+}
+```
+
+**Result**: Lightweight VM without Docker, custom packages installed.
+
+#### Advanced: Docker + Custom Initialization
+
+```hcl
+cloud_init = {
+  enabled        = true
+  hostname       = "docker-host"
+  install_docker = true
+  packages       = ["git", "jq", "vim"]
+  additional_config = <<-EOT
+    # Pull Docker images on first boot
+    runcmd:
+      - docker pull nginx:latest
+      - docker pull redis:alpine
+      - docker network create app-network
+
+    # Create systemd service
+    write_files:
+      - path: /etc/systemd/system/my-app.service
+        content: |
+          [Unit]
+          Description=My Application
+          After=docker.service
+          Requires=docker.service
+
+          [Service]
+          ExecStart=/usr/bin/docker run --rm nginx:latest
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+
+    # Enable custom service
+    runcmd:
+      - systemctl daemon-reload
+      - systemctl enable my-app.service
+      - systemctl start my-app.service
+  EOT
+}
+```
+
+**Result**: Full Docker environment with pre-pulled images, custom systemd service.
+
+### Docker Installation Details
+
+When `install_docker = true` (default), the following is installed:
+
+- **Docker CE** (Community Edition) - Latest stable version
+- **Docker CLI** - Command-line interface
+- **containerd.io** - Container runtime
+- **docker-buildx-plugin** - Build with BuildKit
+- **docker-compose-plugin** - Docker Compose V2
+
+**Installation Method**:
+- Uses official Docker repository (download.docker.com)
+- Installs GPG key for package verification
+- Configures APT source for latest updates
+- Enables Docker service with systemd
+
+**Verify Installation** (after VM creation):
+```bash
+# SSH into the instance
+gcloud compute ssh INSTANCE_NAME
+
+# Check Docker version
+docker --version
+# Output: Docker version 27.x.x, build ...
+
+# Verify Docker is running
+sudo systemctl status docker
+
+# Test Docker
+sudo docker run hello-world
+```
+
+### Cloud-Init Troubleshooting
+
+#### Check Cloud-Init Status
+
+```bash
+# SSH into instance
+gcloud compute ssh INSTANCE_NAME
+
+# Check overall status
+sudo cloud-init status --long
+
+# View cloud-init output
+sudo cat /var/log/cloud-init-output.log
+
+# View detailed logs
+sudo cat /var/log/cloud-init.log
+
+# Check if user-data was received
+sudo cloud-init query userdata
+```
+
+#### Common Issues
+
+**1. Packages Not Installed**
+- Check package names are valid for Ubuntu version
+- Review `/var/log/cloud-init-output.log` for apt errors
+- Ensure network connectivity during first boot
+
+**2. Docker Not Working**
+- Verify `install_docker = true` in configuration
+- Check Docker installation logs: `sudo journalctl -u docker`
+- Verify Docker service: `sudo systemctl status docker`
+
+**3. Hostname Not Set**
+- Ensure `hostname` is valid (lowercase, alphanumeric, hyphens only)
+- Check `/etc/hostname` and `/etc/hosts`
+- Cloud-init sets hostname on first boot only
+
+**4. Custom Scripts Failing**
+- Check `additional_config` YAML syntax
+- Review runcmd execution in `/var/log/cloud-init-output.log`
+- Ensure scripts have proper permissions and dependencies
+
+#### Re-run Cloud-Init (Advanced)
+
+If you need to re-run cloud-init (e.g., after debugging):
+
+```bash
+# Clean cloud-init state
+sudo cloud-init clean --logs --reboot
+
+# Or manually trigger specific modules
+sudo cloud-init single --name package-install
+```
+
+**Note**: Metadata changes after instance creation won't trigger cloud-init re-run due to `lifecycle.ignore_changes`. You must recreate the instance for new cloud-init config.
+
+### Best Practices
+
+1. **Test First**: Validate cloud-init config in dev/test before production
+2. **Keep It Simple**: Use cloud-init for initialization only, not ongoing config management
+3. **Use Additional Config Sparingly**: Complex setups may be better suited for config management tools (Ansible, Chef, Puppet)
+4. **Monitor Logs**: Always check `/var/log/cloud-init-output.log` on first boot
+5. **Idempotency**: Ensure custom runcmd scripts can run multiple times safely
+6. **Secrets Management**: Never put secrets in cloud-init config; use Secret Manager instead
+
+### Template Customization
+
+The cloud-init template is located at [templates/cloud-init.yaml.tpl](templates/cloud-init.yaml.tpl). You can customize it to add:
+
+- Default software repositories
+- System-wide configurations
+- Security hardening steps
+- Monitoring agent installation
+
+Example template modification:
+
+```yaml
+# Add to templates/cloud-init.yaml.tpl
+# Install GCP Ops Agent
+runcmd:
+  - curl -sSO https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh
+  - sudo bash add-google-cloud-ops-agent-repo.sh --also-install
+```
+
+---
+
 ## Variable Reference
 
 ### Core Variables
@@ -306,13 +556,59 @@ Manages HTTP(S) Load Balancers.
 }
 ```
 
+### Compute Variables
+
+#### `instances` Variable
+
+The `instances` variable is a list of VM instance configurations with cloud-init support.
+
+**Key Fields**:
+
+| Field                     | Type         | Required | Default | Description                                       |
+| ------------------------- | ------------ | -------- | ------- | ------------------------------------------------- |
+| `name`                    | string       | Yes      | -       | Instance name                                     |
+| `machine_type`            | string       | Yes      | -       | GCE machine type (e.g., e2-medium)                |
+| `zone`                    | string       | Yes      | -       | GCP zone (e.g., asia-southeast1-a)                |
+| `network`                 | string       | Yes      | -       | VPC network name                                  |
+| `subnetwork`              | string       | Yes      | -       | Subnet name                                       |
+| `image_family`            | string       | Yes      | -       | OS image family (e.g., ubuntu-2404-lts-amd64)     |
+| `image_project`           | string       | Yes      | -       | Image project (e.g., ubuntu-os-cloud)             |
+| `disk_size`               | number       | Yes      | -       | Boot disk size in GB (10-65536)                   |
+| `disk_type`               | string       | Yes      | -       | Disk type (pd-standard, pd-balanced, pd-ssd, etc) |
+| `network_tags`            | list(string) | Yes      | -       | Network tags for firewall rules                   |
+| `external_ip`             | bool         | No       | `false` | Allocate external IP                              |
+| `preemptible`             | bool         | No       | `false` | Create as preemptible instance                    |
+| `deletion_protection`     | bool         | No       | `false` | Enable deletion protection                        |
+| `service_account_email`   | string       | No       | `null`  | Service account email (null = default compute SA) |
+| `service_account_scopes`  | list(string) | No       | Default | OAuth scopes for service account                  |
+| `metadata`                | map(string)  | No       | `{}`    | Custom metadata key-value pairs                   |
+| `labels`                  | map(string)  | No       | `{}`    | Resource labels                                   |
+| `cloud_init`              | object       | No       | `null`  | Cloud-init configuration (see below)              |
+
+**`cloud_init` Object Structure**:
+
+```hcl
+cloud_init = {
+  enabled        = bool                 # Required: Enable cloud-init
+  hostname       = optional(string)     # Optional: Short hostname
+  install_docker = optional(bool, true) # Optional: Install Docker (default: true)
+  packages       = optional(list(string), [
+    "htop",
+    "net-tools",
+    "iputils-ping"
+  ])
+  additional_config = optional(string, "") # Optional: Custom cloud-init YAML
+}
+```
+
+See the [Cloud-Init VM Initialization](#cloud-init-vm-initialization) section for detailed usage.
+
 ### Other Variables
 
 | Variable           | Description                            |
 | ------------------ | -------------------------------------- |
 | `nats`             | List of NAT configurations             |
 | `buckets`          | List of GCS bucket configurations      |
-| `instances`        | List of VM instance configurations     |
 | `instance_groups`  | List of instance group configurations  |
 | `load_balancers`   | List of load balancer configurations   |
 | `service_accounts` | List of service account configurations |

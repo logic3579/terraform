@@ -14,10 +14,10 @@ locals {
       user_data = vm.cloud_init != null && vm.cloud_init.enabled ? templatefile(
         "${path.module}/../../templates/cloud-init.yaml.tpl",
         {
-          hostname = coalesce(vm.cloud_init.hostname, "")
+          hostname       = coalesce(vm.cloud_init.hostname, "")
+          install_docker = coalesce(vm.cloud_init.install_docker, true)
           packages = coalesce(vm.cloud_init.packages, [
             "htop",
-            "curl",
             "net-tools",
             "iputils-ping"
           ])
@@ -70,9 +70,6 @@ resource "google_compute_instance" "this" {
     }
   }
 
-  # Startup script configuration - supports external file
-  metadata_startup_script = each.value.startup_script_file != null ? file(each.value.startup_script_file) : null
-
   # Metadata configuration - supports cloud-init
   metadata = merge(
     coalesce(each.value.metadata, {}),
@@ -104,8 +101,8 @@ resource "google_compute_instance" "this" {
     create_before_destroy = true
     ignore_changes = [
       metadata,
-      metadata_startup_script,
       metadata["ssh-keys"],
+      metadata_startup_script,
     ]
   }
 }
