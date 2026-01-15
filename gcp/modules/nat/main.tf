@@ -42,8 +42,17 @@ resource "google_compute_router_nat" "this" {
     google_compute_address.nat_ip[each.key].self_link
   ] : null
 
-  min_ports_per_vm                    = each.value.min_ports_per_vm
-  max_ports_per_vm                    = each.value.max_ports_per_vm
+  # Dynamic Port Allocation (DPA)
+  # When enabled, ports are allocated dynamically based on VM usage
+  enable_dynamic_port_allocation = each.value.enable_dynamic_port_allocation
+
+  # Port allocation settings
+  # - Static mode (DPA disabled): min_ports_per_vm is used, max_ports_per_vm is ignored
+  # - Dynamic mode (DPA enabled): both min and max are used for dynamic range
+  min_ports_per_vm = each.value.min_ports_per_vm
+  max_ports_per_vm = each.value.enable_dynamic_port_allocation ? each.value.max_ports_per_vm : null
+
+  # Endpoint-Independent Mapping (cannot be used with DPA)
   enable_endpoint_independent_mapping = each.value.enable_endpoint_independent_mapping
 
   dynamic "log_config" {

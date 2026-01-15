@@ -104,14 +104,20 @@ variable "networks" {
 variable "nats" {
   description = "List of NAT configurations"
   type = list(object({
-    name                                = string
-    router_name                         = string
-    network                             = string
-    region                              = string
-    source_subnetwork_ip_ranges_to_nat  = optional(string, "ALL_SUBNETWORKS_ALL_IP_RANGES")
-    nat_ip_allocate_option              = optional(string, "AUTO_ONLY")
-    min_ports_per_vm                    = optional(number, 64)
-    max_ports_per_vm                    = optional(number, 65536)
+    name                               = string
+    router_name                        = string
+    network                            = string
+    region                             = string
+    source_subnetwork_ip_ranges_to_nat = optional(string, "ALL_SUBNETWORKS_ALL_IP_RANGES")
+    nat_ip_allocate_option             = optional(string, "AUTO_ONLY")
+
+    # Dynamic Port Allocation (DPA) configuration
+    enable_dynamic_port_allocation = optional(bool, false)
+
+    # Port allocation settings
+    min_ports_per_vm = optional(number, 64)
+    max_ports_per_vm = optional(number) # Only used when DPA is enabled
+
     enable_endpoint_independent_mapping = optional(bool, false)
     log_config = optional(object({
       enable = bool
@@ -140,12 +146,34 @@ variable "nats" {
     error_message = "Source subnetwork IP ranges must be one of: ALL_SUBNETWORKS_ALL_IP_RANGES, ALL_SUBNETWORKS_ALL_PRIMARY_IP_RANGES, LIST_OF_SUBNETWORKS."
   }
 
+  # Validation: DPA and Endpoint-Independent Mapping are mutually exclusive
   validation {
     condition = alltrue([
       for nat in var.nats :
-      nat.min_ports_per_vm >= 64 && nat.min_ports_per_vm <= 65536
+      !(nat.enable_dynamic_port_allocation == true && nat.enable_endpoint_independent_mapping == true)
     ])
-    error_message = "Min ports per VM must be between 64 and 65536."
+    error_message = "enable_dynamic_port_allocation and enable_endpoint_independent_mapping cannot both be true. They are mutually exclusive."
+  }
+
+  # Validation: min_ports_per_vm range check
+  validation {
+    condition = alltrue([
+      for nat in var.nats :
+      nat.enable_dynamic_port_allocation ?
+      (nat.min_ports_per_vm >= 32 && nat.min_ports_per_vm <= 32768) :
+      (nat.min_ports_per_vm >= 64 && nat.min_ports_per_vm <= 65536)
+    ])
+    error_message = "min_ports_per_vm must be 64-65536 for static mode, or 32-32768 for dynamic port allocation."
+  }
+
+  # Validation: When DPA is enabled, min_ports_per_vm must be power of 2
+  validation {
+    condition = alltrue([
+      for nat in var.nats :
+      nat.enable_dynamic_port_allocation != true ||
+      can(regex("^(32|64|128|256|512|1024|2048|4096|8192|16384|32768)$", tostring(nat.min_ports_per_vm)))
+    ])
+    error_message = "When enable_dynamic_port_allocation is true, min_ports_per_vm must be a power of 2 (32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768)."
   }
 }
 

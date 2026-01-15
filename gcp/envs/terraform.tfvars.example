@@ -111,23 +111,58 @@ networks = [
 # Cloud NAT Configuration
 # ========================================
 # NAT configurations reference VPCs by name from the `networks` variable.
+#
+# Port Allocation Modes:
+# 1. Static (default): Fixed port allocation per VM
+#    - enable_dynamic_port_allocation = false
+#    - min_ports_per_vm: 64-65536 (default: 64)
+#
+# 2. Dynamic: Ports allocated dynamically based on usage (recommended for variable workloads)
+#    - enable_dynamic_port_allocation = true
+#    - min_ports_per_vm: must be power of 2, 32-32768 (default: 32)
+#    - max_ports_per_vm: upper limit for dynamic allocation
+#    - Note: Cannot be used with enable_endpoint_independent_mapping = true
 
 nats = [
+  # Example 1: Static port allocation (default)
   {
-    name                                = "my-project-nat"
-    router_name                         = "my-project-router"
-    network                             = "my-project-vpc" # Must match a network name above
-    region                              = "asia-southeast1"
-    source_subnetwork_ip_ranges_to_nat  = "ALL_SUBNETWORKS_ALL_IP_RANGES"
-    nat_ip_allocate_option              = "AUTO_ONLY" # or "MANUAL_ONLY" for static IP
+    name                               = "my-project-nat"
+    router_name                        = "my-project-router"
+    network                            = "my-project-vpc" # Must match a network name above
+    region                             = "asia-southeast1"
+    source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
+    nat_ip_allocate_option             = "AUTO_ONLY" # or "MANUAL_ONLY" for static IP
+
+    # Static port allocation (default)
+    enable_dynamic_port_allocation      = false
     min_ports_per_vm                    = 64
-    max_ports_per_vm                    = 65536
     enable_endpoint_independent_mapping = false
+
     log_config = {
       enable = false
       filter = "ERRORS_ONLY" # Options: ERRORS_ONLY, TRANSLATIONS_ONLY, ALL
     }
-  }
+  },
+  # Example 2: Dynamic port allocation (recommended for variable workloads)
+  # {
+  #   name                               = "my-project-nat-dpa"
+  #   router_name                        = "my-project-router-dpa"
+  #   network                            = "my-project-vpc"
+  #   region                             = "asia-southeast1"
+  #   source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
+  #   nat_ip_allocate_option             = "AUTO_ONLY"
+  #
+  #   # Dynamic port allocation - ports are allocated based on actual usage
+  #   enable_dynamic_port_allocation      = true
+  #   min_ports_per_vm                    = 32    # Must be power of 2 (32-32768)
+  #   max_ports_per_vm                    = 65536 # Upper limit for dynamic allocation
+  #   enable_endpoint_independent_mapping = false # Cannot be true when DPA is enabled
+  #
+  #   log_config = {
+  #     enable = true
+  #     filter = "ALL"
+  #   }
+  # }
 ]
 
 # ========================================
