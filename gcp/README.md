@@ -61,6 +61,8 @@ gcp/
 │   ├── iam/                     # Service accounts and IAM
 │   ├── storage/                 # Cloud Storage buckets
 │   └── lb/                      # Load Balancers (HTTP/HTTPS)
+├── scripts/                     # Utility scripts
+│   └── tfvars-sync.sh           # Sync tfvars with GCS bucket
 ├── templates/                   # Configuration templates
 │   └── cloud-init.yaml.tpl      # Cloud-init template for VM initialization
 └── envs/                        # Environment-specific configurations
@@ -650,6 +652,103 @@ terraform init -backend-config=backend.hcl
 terraform plan
 terraform apply
 ```
+
+---
+
+## Team Collaboration - tfvars Sync
+
+The `terraform.tfvars` files are gitignored for security (they may contain sensitive values). For team collaboration, use the GCS backend bucket to share tfvars files.
+
+### How It Works
+
+```
+┌─────────────────┐         ┌──────────────────────────────┐
+│  Local Machine  │ ◄─────► │  GCS Backend Bucket          │
+│                 │  sync   │                              │
+│  envs/devtest/  │         │  gs://bucket/gcp/devtest/    │
+│  └─ terraform.  │         │  ├─ default.tfstate          │
+│     tfvars      │         │  └─ terraform.tfvars         │
+└─────────────────┘         └──────────────────────────────┘
+```
+
+The tfvars file is stored alongside the state file in the same GCS prefix, making it easy to manage.
+
+### Using the Sync Script
+
+```bash
+# From gcp/ directory
+cd gcp
+
+# Download tfvars for all environments
+./scripts/tfvars-sync.sh download
+
+# Download tfvars for specific environment
+./scripts/tfvars-sync.sh download devtest
+
+# Upload tfvars for all environments (after making changes)
+./scripts/tfvars-sync.sh upload
+
+# Upload tfvars for specific environment
+./scripts/tfvars-sync.sh upload prod
+```
+
+### New Team Member Setup
+
+When a new team member clones the repository:
+
+```bash
+# 1. Clone the repository
+git clone <repo-url>
+cd terraform/gcp
+
+# 2. Authenticate with GCP
+gcloud auth login
+gcloud auth application-default login
+
+# 3. Download tfvars from GCS
+./scripts/tfvars-sync.sh download
+
+# 4. Initialize and verify
+cd envs/devtest
+terraform init -backend-config=backend.hcl
+terraform plan  # Should show no changes
+```
+
+### Workflow for Making Changes
+
+```bash
+# 1. Download latest tfvars (in case others made changes)
+./scripts/tfvars-sync.sh download devtest
+
+# 2. Make changes to terraform.tfvars
+vim envs/devtest/terraform.tfvars
+
+# 3. Preview and apply changes
+cd envs/devtest
+terraform plan
+terraform apply
+
+# 4. Upload updated tfvars to GCS
+cd ../..
+./scripts/tfvars-sync.sh upload devtest
+```
+
+### Important Notes
+
+- **Always download before editing**: Ensure you have the latest tfvars before making changes
+- **Upload after apply**: After successful `terraform apply`, upload your tfvars changes
+- **Bucket permissions**: Team members need `storage.objects.get` and `storage.objects.create` permissions on the backend bucket
+- **No automatic sync**: The sync is manual - coordinate with your team to avoid conflicts
+- **Version control**: GCS bucket versioning provides history of tfvars changes
+
+### Handling Conflicts
+
+If two people modify tfvars simultaneously:
+
+1. Download the current version from GCS
+2. Manually merge your changes with the downloaded version
+3. Run `terraform plan` to verify
+4. Upload the merged tfvars
 
 ---
 
