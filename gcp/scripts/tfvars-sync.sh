@@ -100,7 +100,7 @@ upload_tfvars() {
 
   gcs_path="gs://${bucket}/${prefix}/terraform.tfvars"
 
-  echo -e "${GREEN}[UPLOAD]${NC} $env -> $gcs_path"
+  echo -e "${GREEN}[UPLOAD]${NC} envs/$env/terraform.tfvars -> $gcs_path"
   gsutil cp "$tfvars_file" "$gcs_path"
 }
 
