@@ -21,3 +21,13 @@ variable "iam_bindings" {
   }))
   default = []
 }
+
+variable "workload_identity_bindings" {
+  description = "Workload Identity bindings to allow Kubernetes Service Accounts to impersonate Google Service Accounts"
+  type = list(object({
+    service_account_id = string # The service account ID (not email) to bind
+    namespace          = string # Kubernetes namespace
+    ksa_name           = string # Kubernetes Service Account name
+  }))
+  default = []
+}

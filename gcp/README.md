@@ -246,17 +246,65 @@ instances = [
 
 ### IAM Module (`modules/iam/`)
 
-Manages service accounts and IAM bindings.
+Manages service accounts, IAM bindings, and GKE Workload Identity.
 
 **Resources**:
 
 - `google_service_account` - Service accounts
 - `google_project_iam_member` - IAM role bindings
+- `google_service_account_iam_member` - Workload Identity bindings
 
 **Key Features**:
 
 - Uses `google_project_iam_member` (not `binding`) to avoid conflicts
 - Supports multiple roles per service account
+- GKE Workload Identity support for KSA to GSA impersonation
+
+**Workload Identity Example**:
+
+```hcl
+# 1. Create service account
+service_accounts = [
+  {
+    account_id   = "argocd-cluster-access"
+    display_name = "ArgoCD Cluster Access"
+    description  = "Service Account for ArgoCD via Workload Identity"
+  }
+]
+
+# 2. Grant GKE access
+iam_bindings = [
+  {
+    service_account_email = "argocd-cluster-access@PROJECT_ID.iam.gserviceaccount.com"
+    roles                 = ["roles/container.developer"]
+  }
+]
+
+# 3. Allow KSA to impersonate GSA
+workload_identity_bindings = [
+  {
+    service_account_id = "argocd-cluster-access"
+    namespace          = "argocd"
+    ksa_name           = "argocd-application-controller"
+  }
+]
+```
+
+**Prerequisites for Workload Identity**:
+
+1. Enable Workload Identity on GKE cluster:
+   ```bash
+   gcloud container clusters update CLUSTER_NAME \
+     --workload-pool=PROJECT_ID.svc.id.goog \
+     --region=REGION
+   ```
+
+2. Annotate the Kubernetes Service Account:
+   ```bash
+   kubectl annotate serviceaccount KSA_NAME \
+     --namespace NAMESPACE \
+     iam.gke.io/gcp-service-account=GSA_NAME@PROJECT_ID.iam.gserviceaccount.com
+   ```
 
 ### Storage Module (`modules/storage/`)
 
@@ -607,14 +655,33 @@ See the [Cloud-Init VM Initialization](#cloud-init-vm-initialization) section fo
 
 ### Other Variables
 
-| Variable           | Description                            |
-| ------------------ | -------------------------------------- |
-| `nats`             | List of NAT configurations             |
-| `buckets`          | List of GCS bucket configurations      |
-| `instance_groups`  | List of instance group configurations  |
-| `load_balancers`   | List of load balancer configurations   |
-| `service_accounts` | List of service account configurations |
-| `iam_bindings`     | List of IAM binding configurations     |
+| Variable                     | Description                                        |
+| ---------------------------- | -------------------------------------------------- |
+| `nats`                       | List of NAT configurations                         |
+| `buckets`                    | List of GCS bucket configurations                  |
+| `instance_groups`            | List of instance group configurations              |
+| `load_balancers`             | List of load balancer configurations               |
+| `service_accounts`           | List of service account configurations             |
+| `iam_bindings`               | List of IAM binding configurations                 |
+| `workload_identity_bindings` | List of GKE Workload Identity binding configs      |
+
+### Workload Identity Bindings
+
+The `workload_identity_bindings` variable configures GKE Workload Identity, allowing Kubernetes Service Accounts to impersonate Google Service Accounts.
+
+**`workload_identity_bindings` Object Structure**:
+
+```hcl
+workload_identity_bindings = [
+  {
+    service_account_id = string  # GSA account_id (must exist in service_accounts)
+    namespace          = string  # Kubernetes namespace
+    ksa_name           = string  # Kubernetes Service Account name
+  }
+]
+```
+
+**Important**: The GKE cluster must have Workload Identity enabled before applying these bindings. See [IAM Module](#iam-module-modulesiam) for prerequisites.
 
 ---
 

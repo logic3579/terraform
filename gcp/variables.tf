@@ -223,6 +223,40 @@ variable "iam_bindings" {
   }
 }
 
+variable "workload_identity_bindings" {
+  description = "Workload Identity bindings to allow Kubernetes Service Accounts to impersonate Google Service Accounts"
+  type = list(object({
+    service_account_id = string # The service account ID (not email) to bind
+    namespace          = string # Kubernetes namespace
+    ksa_name           = string # Kubernetes Service Account name
+  }))
+  default = []
+
+  validation {
+    condition = alltrue([
+      for wi in var.workload_identity_bindings :
+      can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", wi.service_account_id))
+    ])
+    error_message = "Service account ID must be 6-30 characters, start with a lowercase letter, and contain only lowercase letters, numbers, and hyphens."
+  }
+
+  validation {
+    condition = alltrue([
+      for wi in var.workload_identity_bindings :
+      can(regex("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$", wi.namespace))
+    ])
+    error_message = "Kubernetes namespace must be a valid DNS label (lowercase, alphanumeric, hyphens, max 63 chars)."
+  }
+
+  validation {
+    condition = alltrue([
+      for wi in var.workload_identity_bindings :
+      can(regex("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$", wi.ksa_name))
+    ])
+    error_message = "Kubernetes Service Account name must be a valid DNS label (lowercase, alphanumeric, hyphens, max 63 chars)."
+  }
+}
+
 variable "buckets" {
   description = "List of GCS buckets to create"
   type = list(object({

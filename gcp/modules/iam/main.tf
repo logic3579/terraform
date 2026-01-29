@@ -27,3 +27,15 @@ resource "google_project_iam_member" "this" {
   role    = each.value.role
   member  = "serviceAccount:${each.value.email}"
 }
+
+# Workload Identity bindings - allow KSA to impersonate GSA
+resource "google_service_account_iam_member" "workload_identity" {
+  for_each = {
+    for wi in var.workload_identity_bindings :
+    "${wi.service_account_id}:${wi.namespace}:${wi.ksa_name}" => wi
+  }
+
+  service_account_id = google_service_account.this[each.value.service_account_id].name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[${each.value.namespace}/${each.value.ksa_name}]"
+}

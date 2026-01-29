@@ -19,10 +19,11 @@ module "nat" {
 
 # 3. IAM resources (service accounts and bindings)
 module "iam" {
-  source           = "./modules/iam"
-  project_id       = var.project_id
-  service_accounts = var.service_accounts
-  iam_bindings     = var.iam_bindings
+  source                     = "./modules/iam"
+  project_id                 = var.project_id
+  service_accounts           = var.service_accounts
+  iam_bindings               = var.iam_bindings
+  workload_identity_bindings = var.workload_identity_bindings
 }
 
 # 4. Storage resources (GCS buckets)

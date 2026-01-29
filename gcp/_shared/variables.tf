@@ -52,6 +52,12 @@ variable "service_accounts" {
   default     = []
 }
 
+variable "workload_identity_bindings" {
+  description = "Workload Identity bindings for GKE"
+  type        = any # Full type definition in gcp/variables.tf
+  default     = []
+}
+
 variable "buckets" {
   description = "List of GCS buckets to create"
   type        = any # Full type definition in gcp/variables.tf

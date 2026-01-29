@@ -180,6 +180,12 @@ service_accounts = [
     display_name = "Web Server Service Account"
     description  = "Service account for web-server workloads"
   },
+  # Example: Service account for GKE Workload Identity
+  # {
+  #   account_id   = "argocd-cluster-access"
+  #   display_name = "ArgoCD Cluster Access"
+  #   description  = "Service Account for ArgoCD to access GKE clusters via Workload Identity"
+  # }
 ]
 iam_bindings = [
   {
@@ -194,6 +200,34 @@ iam_bindings = [
       "roles/storage.objectViewer",
     ]
   },
+  # Example: IAM binding for GKE access
+  # {
+  #   service_account_email = "argocd-cluster-access@my-project.iam.gserviceaccount.com"
+  #   roles = [
+  #     "roles/container.developer",
+  #   ]
+  # }
+]
+
+# ========================================
+# GKE Workload Identity Bindings
+# ========================================
+# Allow Kubernetes Service Accounts (KSA) to impersonate Google Service Accounts (GSA).
+# Prerequisites:
+#   1. GKE cluster must have Workload Identity enabled:
+#      gcloud container clusters update CLUSTER_NAME --workload-pool=PROJECT_ID.svc.id.goog
+#   2. KSA must be annotated with the GSA email:
+#      kubectl annotate serviceaccount KSA_NAME \
+#        --namespace NAMESPACE \
+#        iam.gke.io/gcp-service-account=GSA_NAME@PROJECT_ID.iam.gserviceaccount.com
+
+workload_identity_bindings = [
+  # Example: Allow ArgoCD application controller to impersonate GSA
+  # {
+  #   service_account_id = "argocd-cluster-access"       # GSA account_id (must exist in service_accounts)
+  #   namespace          = "argocd"                      # Kubernetes namespace
+  #   ksa_name           = "argocd-application-controller" # Kubernetes Service Account name
+  # }
 ]
 
 # ========================================
