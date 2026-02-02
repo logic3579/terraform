@@ -46,8 +46,9 @@ module "gcp" {
   nats = var.nats
 
   # IAM resources
-  service_accounts = var.service_accounts
-  iam_bindings     = var.iam_bindings
+  service_accounts           = var.service_accounts
+  iam_bindings               = var.iam_bindings
+  workload_identity_bindings = var.workload_identity_bindings
 
   # Storage resources
   buckets = var.buckets
