@@ -28,6 +28,7 @@ variable "workload_identity_bindings" {
     service_account_id = string # The service account ID (not email) to bind
     namespace          = string # Kubernetes namespace
     ksa_name           = string # Kubernetes Service Account name
+    wi_pool_project_id = string # WI pool project ID (project where GKE cluster resides)
   }))
   default = []
 }

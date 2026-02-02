@@ -37,5 +37,5 @@ resource "google_service_account_iam_member" "workload_identity" {
 
   service_account_id = google_service_account.this[each.value.service_account_id].name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "serviceAccount:${var.project_id}.svc.id.goog[${each.value.namespace}/${each.value.ksa_name}]"
+  member             = "serviceAccount:${each.value.wi_pool_project_id}.svc.id.goog[${each.value.namespace}/${each.value.ksa_name}]"
 }

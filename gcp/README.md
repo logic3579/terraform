@@ -258,7 +258,7 @@ Manages service accounts, IAM bindings, and GKE Workload Identity.
 
 - Uses `google_project_iam_member` (not `binding`) to avoid conflicts
 - Supports multiple roles per service account
-- GKE Workload Identity support for KSA to GSA impersonation
+- GKE Workload Identity support for KSA to GSA impersonation (including cross-project)
 
 **Workload Identity Example**:
 
@@ -286,9 +286,12 @@ workload_identity_bindings = [
     service_account_id = "argocd-cluster-access"
     namespace          = "argocd"
     ksa_name           = "argocd-application-controller"
+    wi_pool_project_id = "gke-project-id"  # Required: project where GKE cluster resides
   }
 ]
 ```
+
+**Cross-Project Workload Identity**: When the GKE cluster is in a different project than the GSA, set `wi_pool_project_id` to the project where the GKE cluster resides. This generates the member `serviceAccount:GKE_PROJECT.svc.id.goog[namespace/ksa]`.
 
 **Prerequisites for Workload Identity**:
 
@@ -674,9 +677,10 @@ The `workload_identity_bindings` variable configures GKE Workload Identity, allo
 ```hcl
 workload_identity_bindings = [
   {
-    service_account_id = string  # GSA account_id (must exist in service_accounts)
-    namespace          = string  # Kubernetes namespace
-    ksa_name           = string  # Kubernetes Service Account name
+    service_account_id  = string # GSA account_id (must exist in service_accounts)
+    namespace           = string # Kubernetes namespace
+    ksa_name            = string # Kubernetes Service Account name
+    wi_pool_project_id  = string # Required: project ID where GKE cluster resides
   }
 ]
 ```

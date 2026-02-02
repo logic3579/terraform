@@ -224,9 +224,10 @@ iam_bindings = [
 workload_identity_bindings = [
   # Example: Allow ArgoCD application controller to impersonate GSA
   # {
-  #   service_account_id = "argocd-cluster-access"       # GSA account_id (must exist in service_accounts)
-  #   namespace          = "argocd"                      # Kubernetes namespace
+  #   service_account_id = "argocd-cluster-access"         # GSA account_id (must exist in service_accounts)
+  #   namespace          = "argocd"                        # Kubernetes namespace
   #   ksa_name           = "argocd-application-controller" # Kubernetes Service Account name
+  #   wi_pool_project_id = "gke-cluster-project"           # Required: project ID where GKE cluster resides
   # }
 ]
 

@@ -229,6 +229,7 @@ variable "workload_identity_bindings" {
     service_account_id = string # The service account ID (not email) to bind
     namespace          = string # Kubernetes namespace
     ksa_name           = string # Kubernetes Service Account name
+    wi_pool_project_id = string # WI pool project ID (project where GKE cluster resides)
   }))
   default = []
 
@@ -254,6 +255,14 @@ variable "workload_identity_bindings" {
       can(regex("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$", wi.ksa_name))
     ])
     error_message = "Kubernetes Service Account name must be a valid DNS label (lowercase, alphanumeric, hyphens, max 63 chars)."
+  }
+
+  validation {
+    condition = alltrue([
+      for wi in var.workload_identity_bindings :
+      can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", wi.wi_pool_project_id))
+    ])
+    error_message = "WI pool project ID must be a valid GCP project ID format."
   }
 }
 
