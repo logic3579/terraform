@@ -100,6 +100,7 @@ resource "google_compute_instance" "this" {
     prevent_destroy       = false
     create_before_destroy = true
     ignore_changes = [
+      boot_disk[0].initialize_params[0].size,
       metadata,
       metadata["ssh-keys"],
       metadata_startup_script,
