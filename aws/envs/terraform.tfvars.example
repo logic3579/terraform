@@ -1,0 +1,140 @@
+# Environment Configuration
+# Copy this file to your environment directory as terraform.tfvars
+# and update with your actual values.
+
+env = "devtest" # Environment name: devtest, prod
+
+tags = {
+  organization = "my-org" # Your organization name
+  project      = "my-project"
+}
+
+# ========================================
+# VPC Network Configuration
+# ========================================
+# The `vpcs` variable supports multiple VPCs with subnets, NAT gateways,
+# and security groups. Each VPC is a self-contained configuration object.
+#
+# Routing behaviour:
+#   - Public subnets (public = true) → shared public route table (0.0.0.0/0 → IGW)
+#   - Private subnets with nat_gateway_name → private route table (0.0.0.0/0 → NAT GW)
+#   - Private subnets without nat_gateway_name → VPC default route table (isolated)
+
+vpcs = [
+  # Example 1: HA multi-AZ VPC with public/private subnets and NAT
+  {
+    name       = "main-vpc"
+    cidr_block = "10.0.0.0/16"
+
+    subnets = [
+      # Public subnets — one per AZ for ALB/NLB placement
+      {
+        name              = "public-1a"
+        cidr_block        = "10.0.1.0/24"
+        availability_zone = "us-east-1a"
+        public            = true
+      },
+      {
+        name              = "public-1b"
+        cidr_block        = "10.0.2.0/24"
+        availability_zone = "us-east-1b"
+        public            = true
+      },
+
+      # Private subnets — application tier with NAT egress
+      {
+        name              = "app-1a"
+        cidr_block        = "10.0.10.0/24"
+        availability_zone = "us-east-1a"
+        nat_gateway_name  = "nat-1a"
+      },
+      {
+        name              = "app-1b"
+        cidr_block        = "10.0.11.0/24"
+        availability_zone = "us-east-1b"
+        nat_gateway_name  = "nat-1b"
+      },
+
+      # Private subnets — database tier (isolated, no internet access)
+      {
+        name              = "db-1a"
+        cidr_block        = "10.0.20.0/24"
+        availability_zone = "us-east-1a"
+      },
+      {
+        name              = "db-1b"
+        cidr_block        = "10.0.21.0/24"
+        availability_zone = "us-east-1b"
+      },
+    ]
+
+    # NAT gateways — one per AZ for HA (must reference public subnets)
+    nat_gateways = [
+      { name = "nat-1a", subnet_name = "public-1a" },
+      { name = "nat-1b", subnet_name = "public-1b" },
+    ]
+
+    security_groups = [
+      {
+        name        = "web-sg"
+        description = "Allow HTTP/HTTPS from the internet"
+        ingress_rules = [
+          { from_port = 80, to_port = 80, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] },
+          { from_port = 443, to_port = 443, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] },
+        ]
+        egress_rules = [
+          { from_port = 0, to_port = 0, protocol = "-1", cidr_blocks = ["0.0.0.0/0"] },
+        ]
+      },
+      {
+        name        = "app-sg"
+        description = "Allow traffic from web tier"
+        ingress_rules = [
+          { from_port = 8080, to_port = 8080, protocol = "tcp", cidr_blocks = ["10.0.1.0/24", "10.0.2.0/24"] },
+        ]
+        egress_rules = [
+          { from_port = 0, to_port = 0, protocol = "-1", cidr_blocks = ["0.0.0.0/0"] },
+        ]
+      },
+      {
+        name        = "db-sg"
+        description = "Allow database connections from app tier"
+        ingress_rules = [
+          { from_port = 5432, to_port = 5432, protocol = "tcp", cidr_blocks = ["10.0.10.0/24", "10.0.11.0/24"] },
+        ]
+        egress_rules = [
+          { from_port = 0, to_port = 0, protocol = "-1", cidr_blocks = ["0.0.0.0/0"] },
+        ]
+      },
+    ]
+  },
+
+  # Example 2: Simple VPC (single public subnet, no NAT)
+  # Useful for bastion hosts, dev environments, or standalone services
+  # {
+  #   name       = "simple-vpc"
+  #   cidr_block = "172.16.0.0/16"
+  #
+  #   subnets = [
+  #     {
+  #       name              = "public-1a"
+  #       cidr_block        = "172.16.1.0/24"
+  #       availability_zone = "us-east-1a"
+  #       public            = true
+  #     },
+  #   ]
+  #
+  #   security_groups = [
+  #     {
+  #       name        = "allow-ssh"
+  #       description = "Allow SSH access"
+  #       ingress_rules = [
+  #         { from_port = 22, to_port = 22, protocol = "tcp", cidr_blocks = ["YOUR_IP/32"] },
+  #       ]
+  #       egress_rules = [
+  #         { from_port = 0, to_port = 0, protocol = "-1", cidr_blocks = ["0.0.0.0/0"] },
+  #       ]
+  #     },
+  #   ]
+  # }
+]
