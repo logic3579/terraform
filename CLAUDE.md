@@ -27,7 +27,26 @@ terraform fmt -check -recursive
 ./gcp/scripts/tfvars-sync.sh upload prod        # upload specific env
 ```
 
-AWS is a flat structure under `aws/` — run `terraform init/plan/apply` directly from there (local state, no backend).
+AWS Terraform operations run from environment directories (`aws/envs/devtest/`):
+
+```bash
+# Initialize (with S3 backend)
+cd aws/envs/devtest
+terraform init -backend-config=backend.hcl
+
+# Or initialize with local state (no backend)
+terraform init -backend=false
+
+# Plan and apply
+terraform plan
+terraform apply
+
+# Validate configuration
+terraform validate
+
+# Format check
+terraform fmt -check -recursive
+```
 
 ## Architecture
 
@@ -41,7 +60,19 @@ Three-layer module architecture:
 
 3. **Environment configs** (`gcp/envs/{devtest,prod}/`) — Each env has its own `main.tf` (provider + backend + root module call) and `backend.hcl` (GCS bucket/prefix). `variables.tf` and `outputs.tf` are **symlinks** to `gcp/_shared/` — do not edit them in env dirs.
 
-### Key patterns
+### AWS (modular, network module complete)
+
+Same three-layer architecture as GCP:
+
+1. **Root module** (`aws/main.tf`) — Calls the network module, with placeholders for future modules (compute, iam, storage, lb).
+
+2. **Reusable modules** (`aws/modules/network/`) — VPC, subnets, IGW, NAT GW + EIP, route tables, security groups, and SG rules. Uses `flatten()` + `for_each` with compound keys (`"vpc-name/subnet-name"`).
+
+3. **Environment configs** (`aws/envs/devtest/`) — Provider + S3 backend + root module call. `variables.tf` and `outputs.tf` are **symlinks** to `aws/_shared/` — do not edit them in env dirs.
+
+**Routing design**: One public route table per VPC (0.0.0.0/0 → IGW), one private route table per NAT gateway (0.0.0.0/0 → NAT GW), isolated subnets use VPC default route table.
+
+### Key patterns (shared by GCP and AWS)
 
 - **Flattening nested inputs**: Modules use `locals` with `flatten()` to convert nested lists (e.g., networks with subnets) into flat maps keyed by compound keys like `"vpc-name/subnet-name"` for use with `for_each`.
 - **Optional attributes with defaults**: Variables use `optional(type, default)` extensively (e.g., `disk_size = optional(number, 20)`).
@@ -51,16 +82,15 @@ Three-layer module architecture:
 
 ### State management
 
-- GCS backend per environment, configured via `backend.hcl` files
-- Same GCS bucket stores both state files and team-shared tfvars (via `tfvars-sync.sh`)
-- State prefix pattern: `gcp/{env_name}` (e.g., `gcp/devtest`, `gcp/prod`)
+- **GCP**: GCS backend per environment, configured via `backend.hcl` files. Same GCS bucket stores both state files and team-shared tfvars (via `tfvars-sync.sh`). State prefix pattern: `gcp/{env_name}` (e.g., `gcp/devtest`, `gcp/prod`).
+- **AWS**: S3 backend per environment, configured via `backend.hcl` files. State key pattern: `aws/{env_name}/terraform.tfstate`.
 
 ### What's gitignored
 
-`*.tfvars`, `*.tfstate`, `*.json` (except tfvars.json), `**/keys/`, `.terraform/`. Use `gcp/envs/terraform.tfvars.example` as the reference template for tfvars.
+`*.tfvars`, `*.tfstate`, `*.json` (except tfvars.json), `**/keys/`, `.terraform/`. Use `gcp/envs/terraform.tfvars.example` and `aws/envs/terraform.tfvars.example` as the reference templates for tfvars.
 
 ## Provider versions
 
 - Terraform `~> 1.5`
 - `hashicorp/google` and `hashicorp/google-beta` `~> 7.0`
-- AWS provider `~> 4.0` (aws/ directory only)
+- `hashicorp/aws` `~> 5.0`
