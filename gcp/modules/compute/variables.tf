@@ -58,6 +58,17 @@ variable "instances" {
       ])
       additional_config = optional(string, "") # Additional cloud-init YAML
     }))
+
+    # Additional disks to create and/or attach
+    additional_disks = optional(list(object({
+      name     = string
+      size     = optional(number, 20)            # GB, ignored when existing=true
+      type     = optional(string, "pd-standard") # ignored when existing=true
+      zone     = optional(string)                # defaults to VM zone
+      mode     = optional(string, "READ_WRITE")  # READ_WRITE or READ_ONLY
+      existing = optional(bool, false)           # true=lookup existing disk, false=create new
+      labels   = optional(map(string), {})       # ignored when existing=true
+    })), [])
   }))
   default = []
 
@@ -81,6 +92,39 @@ variable "instances" {
       ] if vm.cloud_init != null && vm.cloud_init.enabled
     ]))
     error_message = "Package names must follow valid package naming conventions (lowercase letters, numbers, +, -, .)."
+  }
+
+  # Validation: Additional disk type
+  validation {
+    condition = alltrue(flatten([
+      for vm in var.instances : [
+        for disk in vm.additional_disks :
+        contains(["pd-standard", "pd-balanced", "pd-ssd", "pd-extreme"], disk.type)
+      ]
+    ]))
+    error_message = "Additional disk type must be one of: pd-standard, pd-balanced, pd-ssd, pd-extreme."
+  }
+
+  # Validation: Additional disk mode
+  validation {
+    condition = alltrue(flatten([
+      for vm in var.instances : [
+        for disk in vm.additional_disks :
+        contains(["READ_WRITE", "READ_ONLY"], disk.mode)
+      ]
+    ]))
+    error_message = "Additional disk mode must be one of: READ_WRITE, READ_ONLY."
+  }
+
+  # Validation: Additional disk size (only for new disks)
+  validation {
+    condition = alltrue(flatten([
+      for vm in var.instances : [
+        for disk in vm.additional_disks :
+        disk.existing || (disk.size >= 10 && disk.size <= 65536)
+      ]
+    ]))
+    error_message = "Additional disk size must be between 10 and 65536 GB."
   }
 }
 

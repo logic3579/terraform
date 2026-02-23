@@ -302,6 +302,21 @@ instances = [
       enabled  = true
       hostname = "app-server-1"
     }
+
+    # Additional disks
+    additional_disks = [
+      {
+        name = "app-server-1-data"
+        size = 100
+        type = "pd-ssd"
+      },
+      # Example: Attach an existing disk (read-only)
+      # {
+      #   name     = "shared-data-disk"
+      #   existing = true
+      #   mode     = "READ_ONLY"
+      # }
+    ]
   },
   # Example: Instance with custom packages and additional config
   {

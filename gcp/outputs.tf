@@ -62,3 +62,8 @@ output "instance_group_names" {
   description = "Instance group names"
   value       = module.compute.instance_group_names
 }
+
+output "disk_names" {
+  description = "Additional disk names (new disks only)"
+  value       = module.compute.disk_names
+}

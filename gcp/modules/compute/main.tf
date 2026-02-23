@@ -7,6 +7,30 @@ locals {
   # Default Compute Engine service account
   default_compute_sa = "${data.google_project.current.number}-compute@developer.gserviceaccount.com"
 
+  # Flatten additional disks across all instances
+  additional_disks_flat = flatten([
+    for vm in var.instances : [
+      for disk in vm.additional_disks : {
+        key     = "${vm.name}/${disk.name}"
+        vm_name = vm.name
+        vm_zone = vm.zone
+        disk    = disk
+      }
+    ]
+  ])
+
+  new_disks = {
+    for d in local.additional_disks_flat : d.key => d if !d.disk.existing
+  }
+
+  existing_disks = {
+    for d in local.additional_disks_flat : d.key => d if d.disk.existing
+  }
+
+  all_disks = {
+    for d in local.additional_disks_flat : d.key => d
+  }
+
   # Cloud-init configuration processing
   cloud_init_configs = {
     for vm in var.instances : vm.name => {
@@ -15,11 +39,12 @@ locals {
         "${path.module}/../../templates/cloud-init.yaml.tpl",
         {
           hostname       = coalesce(vm.cloud_init.hostname, "")
-          install_docker = coalesce(vm.cloud_init.install_docker, true)
+          install_docker = coalesce(vm.cloud_init.install_docker, false)
           packages = coalesce(vm.cloud_init.packages, [
-            "htop",
+            "curl",
             "net-tools",
-            "iputils-ping"
+            "iputils-ping",
+            "htop",
           ])
           additional_config = try(vm.cloud_init.additional_config, "")
         }
@@ -101,11 +126,40 @@ resource "google_compute_instance" "this" {
     create_before_destroy = true
     ignore_changes = [
       boot_disk[0].initialize_params[0].size,
+      attached_disk,
       metadata,
       metadata["ssh-keys"],
       metadata_startup_script,
     ]
   }
+}
+
+resource "google_compute_disk" "this" {
+  for_each = local.new_disks
+
+  project = var.project_id
+  name    = each.value.disk.name
+  zone    = coalesce(each.value.disk.zone, each.value.vm_zone)
+  size    = each.value.disk.size
+  type    = each.value.disk.type
+  labels  = merge(var.labels, each.value.disk.labels)
+}
+
+data "google_compute_disk" "this" {
+  for_each = local.existing_disks
+
+  project = var.project_id
+  name    = each.value.disk.name
+  zone    = coalesce(each.value.disk.zone, each.value.vm_zone)
+}
+
+resource "google_compute_attached_disk" "this" {
+  for_each = local.all_disks
+
+  disk     = each.value.disk.existing ? data.google_compute_disk.this[each.key].self_link : google_compute_disk.this[each.key].self_link
+  instance = google_compute_instance.this[each.value.vm_name].id
+  zone     = coalesce(each.value.disk.zone, each.value.vm_zone)
+  mode     = each.value.disk.mode
 }
 
 resource "google_compute_instance_group" "this" {

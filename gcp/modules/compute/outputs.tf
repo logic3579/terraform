@@ -25,3 +25,8 @@ output "instance_group_zones" {
   description = "Map of instance group zones"
   value       = { for k, v in google_compute_instance_group.this : k => v.zone }
 }
+
+output "disk_names" {
+  description = "Map of additional disk names (new disks only)"
+  value       = { for k, v in google_compute_disk.this : k => v.name }
+}
