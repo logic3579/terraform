@@ -1,11 +1,5 @@
 #cloud-config
 
-# Hostname Configuration
-%{ if hostname != "" ~}
-hostname: ${hostname}
-prefer_fqdn_over_hostname: false
-%{ endif ~}
-
 # Package Management
 package_update: true
 package_upgrade: false
@@ -21,9 +15,6 @@ packages:
 
 # Timezone Configuration
 timezone: UTC
-
-# System Configuration
-preserve_hostname: false
 
 %{ if install_docker ~}
 # Install Docker from official repository

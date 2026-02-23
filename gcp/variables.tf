@@ -353,7 +353,6 @@ variable "instances" {
     # Cloud-init configuration
     cloud_init = optional(object({
       enabled        = bool
-      hostname       = optional(string)
       install_docker = optional(bool, true)
       packages = optional(list(string), [
         "htop",
@@ -390,17 +389,6 @@ variable "instances" {
       vm.disk_size >= 10 && vm.disk_size <= 65536
     ])
     error_message = "Disk size must be between 10 and 65536 GB."
-  }
-
-  # Validation: Hostname format validation
-  validation {
-    condition = alltrue([
-      for vm in var.instances :
-      vm.cloud_init == null || !vm.cloud_init.enabled ||
-      (vm.cloud_init.hostname == null ||
-      can(regex("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$|^[a-z0-9]$", vm.cloud_init.hostname)))
-    ])
-    error_message = "cloud_init.hostname must be a valid hostname format (lowercase letters, numbers, hyphens, 1-63 chars)."
   }
 
   # Validation: Package name format validation

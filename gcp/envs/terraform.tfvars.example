@@ -267,14 +267,12 @@ buckets = [
 # All instances are initialized using cloud-init.
 # Cloud-init configuration:
 #   - Docker installation (optional, enabled by default from official repository)
-#   - Configurable hostname (short name, FQDN uses GCP default)
 #   - Configurable packages (defaults: htop, net-tools, iputils-ping)
 #   - Support for additional cloud-init YAML via additional_config
 #
 # To enable cloud-init:
 #   cloud_init = {
 #     enabled        = true
-#     hostname       = "my-server"    # Optional, short hostname
 #     install_docker = true            # Optional, default: true (install Docker)
 #     packages       = ["vim", "git"]  # Optional, additional packages
 #     additional_config = "..."        # Optional, additional cloud-init YAML
@@ -299,8 +297,7 @@ instances = [
 
     # Cloud-init with Docker pre-installed
     cloud_init = {
-      enabled  = true
-      hostname = "app-server-1"
+      enabled = true
     }
 
     # Additional disks
@@ -336,8 +333,7 @@ instances = [
     # Cloud-init with custom packages and additional configuration
     # Note: Docker installation enabled by default
     cloud_init = {
-      enabled  = true
-      hostname = "custom-server"
+      enabled        = true
       install_docker = false
       packages = [
         "vim",
@@ -370,7 +366,6 @@ instances = [
     # Cloud-init configuration
     cloud_init = {
       enabled        = true
-      hostname       = "web-server"
       install_docker = true # Set to false to disable Docker installation
       packages = [
         "nodejs",

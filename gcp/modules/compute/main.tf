@@ -38,7 +38,6 @@ locals {
       user_data = vm.cloud_init != null && vm.cloud_init.enabled ? templatefile(
         "${path.module}/../../templates/cloud-init.yaml.tpl",
         {
-          hostname       = coalesce(vm.cloud_init.hostname, "")
           install_docker = coalesce(vm.cloud_init.install_docker, false)
           packages = coalesce(vm.cloud_init.packages, [
             "curl",

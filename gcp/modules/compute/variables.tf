@@ -49,7 +49,6 @@ variable "instances" {
     # Cloud-init configuration
     cloud_init = optional(object({
       enabled        = bool                 # Enable cloud-init
-      hostname       = optional(string)     # Short hostname (FQDN will use GCP default)
       install_docker = optional(bool, true) # Install Docker from official repository (default: true)
       packages = optional(list(string), [
         "htop",
@@ -72,18 +71,7 @@ variable "instances" {
   }))
   default = []
 
-  # Validation 2: Hostname format validation
-  validation {
-    condition = alltrue([
-      for vm in var.instances :
-      vm.cloud_init == null || !vm.cloud_init.enabled ||
-      (vm.cloud_init.hostname == null ||
-      can(regex("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$|^[a-z0-9]$", vm.cloud_init.hostname)))
-    ])
-    error_message = "cloud_init.hostname must be a valid hostname format (lowercase letters, numbers, hyphens, 1-63 chars)."
-  }
-
-  # Validation 3: Package name format validation
+  # Validation: Package name format validation
   validation {
     condition = alltrue(flatten([
       for vm in var.instances : [
