@@ -256,6 +256,25 @@ buckets = [
         condition = { age = 365 }
       }
     ]
+
+    # Bucket-level IAM bindings (non-authoritative, won't overwrite existing permissions)
+    # Supports: serviceAccount, user, group, domain principals
+    # iam_bindings = [
+    #   {
+    #     role = "roles/storage.objectViewer"
+    #     members = [
+    #       "serviceAccount:my-sa@my-project.iam.gserviceaccount.com",
+    #       "user:alice@example.com",
+    #     ]
+    #   },
+    #   # Cross-project service account access
+    #   {
+    #     role = "roles/storage.objectAdmin"
+    #     members = [
+    #       "serviceAccount:123456789-compute@developer.gserviceaccount.com",
+    #     ]
+    #   },
+    # ]
   }
 ]
 

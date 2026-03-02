@@ -1,3 +1,17 @@
+locals {
+  bucket_iam_members = flatten([
+    for bucket in var.buckets : [
+      for binding in coalesce(bucket.iam_bindings, []) : [
+        for member in binding.members : {
+          bucket = bucket.name
+          role   = binding.role
+          member = member
+        }
+      ]
+    ]
+  ])
+}
+
 resource "google_storage_bucket" "this" {
   for_each = { for b in var.buckets : b.name => b }
 
@@ -27,4 +41,12 @@ resource "google_storage_bucket" "this" {
       }
     }
   }
+}
+
+resource "google_storage_bucket_iam_member" "this" {
+  for_each = { for m in local.bucket_iam_members : "${m.bucket}/${m.role}/${m.member}" => m }
+
+  bucket = google_storage_bucket.this[each.value.bucket].name
+  role   = each.value.role
+  member = each.value.member
 }

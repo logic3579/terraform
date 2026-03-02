@@ -28,6 +28,10 @@ variable "buckets" {
         with_state = optional(string)
       })
     })))
+    iam_bindings = optional(list(object({
+      role    = string
+      members = list(string)
+    })))
   }))
   default = []
 }

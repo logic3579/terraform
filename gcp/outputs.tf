@@ -48,6 +48,11 @@ output "bucket_urls" {
   value       = module.storage.bucket_urls
 }
 
+output "bucket_iam_bindings" {
+  description = "GCS bucket IAM member bindings"
+  value       = module.storage.bucket_iam_bindings
+}
+
 output "instance_names" {
   description = "VM instance names"
   value       = module.compute.instance_names

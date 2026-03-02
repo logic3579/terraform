@@ -285,6 +285,10 @@ variable "buckets" {
         with_state = optional(string)
       })
     })))
+    iam_bindings = optional(list(object({
+      role    = string
+      members = list(string)
+    })))
   }))
   default = []
 
@@ -310,6 +314,38 @@ variable "buckets" {
       bucket.public_access_prevention == null || contains(["enforced", "inherited"], bucket.public_access_prevention)
     ])
     error_message = "Public access prevention must be either 'enforced' or 'inherited'."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for bucket in var.buckets : [
+        for binding in coalesce(bucket.iam_bindings, []) :
+        can(regex("^(roles/|projects/|organizations/)", binding.role))
+      ]
+    ]))
+    error_message = "IAM binding role must start with 'roles/', 'projects/', or 'organizations/'."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for bucket in var.buckets : [
+        for binding in coalesce(bucket.iam_bindings, []) : [
+          for member in binding.members :
+          can(regex("^(serviceAccount|user|group|domain):.+$", member)) || contains(["allUsers", "allAuthenticatedUsers"], member)
+        ]
+      ]
+    ]))
+    error_message = "IAM binding member must be in 'type:identifier' format (serviceAccount, user, group, domain) or 'allUsers'/'allAuthenticatedUsers'."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for bucket in var.buckets : [
+        for binding in coalesce(bucket.iam_bindings, []) :
+        length(binding.members) > 0
+      ]
+    ]))
+    error_message = "IAM binding members list must not be empty."
   }
 }
 

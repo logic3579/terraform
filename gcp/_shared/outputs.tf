@@ -51,6 +51,11 @@ output "bucket_urls" {
   value       = module.gcp.bucket_urls
 }
 
+output "bucket_iam_bindings" {
+  description = "GCS bucket IAM member bindings"
+  value       = module.gcp.bucket_iam_bindings
+}
+
 output "instance_names" {
   description = "VM instance names"
   value       = module.gcp.instance_names
