@@ -38,6 +38,7 @@ terraform.rc
 
 # Ignore Service Account Key files (sensitive)
 **/keys/
-*.json
-!terraform.tfvars.json
-!**/terraform.tfvars.json
+
+# Claude Code
+.claude/settings.local.json
+.claude/memory/
