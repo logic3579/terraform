@@ -101,7 +101,7 @@ upload_tfvars() {
   gcs_path="gs://${bucket}/${prefix}/terraform.tfvars"
 
   echo -e "${GREEN}[UPLOAD]${NC} envs/$env/terraform.tfvars -> $gcs_path"
-  gsutil cp "$tfvars_file" "$gcs_path"
+  gcloud storage cp "$tfvars_file" "$gcs_path"
 }
 
 # Download tfvars from GCS
@@ -121,13 +121,13 @@ download_tfvars() {
   gcs_path="gs://${bucket}/${prefix}/terraform.tfvars"
 
   # Check if file exists in GCS
-  if ! gsutil -q stat "$gcs_path" 2>/dev/null; then
+  if ! gcloud storage objects describe "$gcs_path" 2>/dev/null; then
     echo -e "${YELLOW}[SKIP]${NC} No terraform.tfvars in GCS for environment: $env"
     return 0
   fi
 
   echo -e "${GREEN}[DOWNLOAD]${NC} $gcs_path -> envs/$env/terraform.tfvars"
-  gsutil cp "$gcs_path" "$tfvars_file"
+  gcloud storage cp "$gcs_path" "$tfvars_file"
 }
 
 # Get list of environments (compatible with macOS and Linux)
