@@ -1,2 +1,2 @@
-bucket = "revosurge-uat-loki-chunks"
+bucket = "revosurge-data-prod"
 prefix = "gcp/prod"
