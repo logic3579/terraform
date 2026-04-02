@@ -254,6 +254,11 @@ buckets = [
       {
         action    = { type = "Delete" }
         condition = { age = 365 }
+      },
+      # Example: Delete objects under a specific prefix after 7 days
+      {
+        action    = { type = "Delete" }
+        condition = { age = 7, matches_prefix = ["tmp/", "staging/"] }
       }
     ]
 

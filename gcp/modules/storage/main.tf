@@ -36,8 +36,9 @@ resource "google_storage_bucket" "this" {
         storage_class = lifecycle_rule.value.action.storage_class
       }
       condition {
-        age        = lifecycle_rule.value.condition.age
-        with_state = lifecycle_rule.value.condition.with_state
+        age            = lifecycle_rule.value.condition.age
+        with_state     = lifecycle_rule.value.condition.with_state
+        matches_prefix = lifecycle_rule.value.condition.matches_prefix
       }
     }
   }

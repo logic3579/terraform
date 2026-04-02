@@ -24,8 +24,9 @@ variable "buckets" {
         storage_class = optional(string)
       })
       condition = object({
-        age        = optional(number)
-        with_state = optional(string)
+        age            = optional(number)
+        with_state     = optional(string)
+        matches_prefix = optional(list(string))
       })
     })))
     iam_bindings = optional(list(object({
