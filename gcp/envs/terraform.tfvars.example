@@ -519,3 +519,279 @@ load_balancers = [
     }
   }
 ]
+
+# ========================================
+# NEG-based Load Balancers (GKE Standalone NEGs)
+# ========================================
+# For GKE services exposed via Standalone NEGs.
+#
+# Setup flow:
+# 1. Deploy K8s Service with cloud.google.com/neg annotation (Helm charts)
+# 2. GKE NEG controller creates zonal NEGs automatically
+# 3. List NEGs: gcloud compute network-endpoint-groups list
+# 4. Populate neg names/zones below, then terraform apply
+
+neg_load_balancers = [
+  # Example 1: HTTP + HTTPS NEG Load Balancer with managed SSL
+  {
+    name                = "gke-web-lb"
+    description         = "Load balancer for GKE web service"
+    global_address_name = "gke-web-lb-ip"
+    http_port           = 80
+    https_port          = 443
+
+    health_check = {
+      name                = "gke-web-health-check"
+      type                = "HTTP"
+      check_interval_sec  = 15
+      timeout_sec         = 5
+      healthy_threshold   = 2
+      unhealthy_threshold = 3
+      port                = 8080
+      request_path        = "/healthz"
+    }
+
+    backend_service = {
+      name             = "gke-web-backend"
+      protocol         = "HTTP"
+      timeout_sec      = 30
+      enable_cdn       = false
+      session_affinity = "NONE"
+      balancing_mode   = "RATE"
+      max_rate_per_endpoint = 1000
+      enable_logging   = true
+      log_sample_rate  = 0.5
+
+      # NEG name + zone pairs from: gcloud compute network-endpoint-groups list
+      negs = [
+        { name = "k8s1-abcdef-default-web-svc-8080-abcdef", zone = "asia-southeast1-a" },
+        { name = "k8s1-abcdef-default-web-svc-8080-abcdef", zone = "asia-southeast1-b" },
+      ]
+    }
+
+    ssl_config = {
+      enabled             = true
+      certificate_domains = ["app.example.com"]
+    }
+  },
+
+  # Example 2: HTTP-only NEG Load Balancer (API service)
+  # {
+  #   name                = "gke-api-lb"
+  #   description         = "Load balancer for GKE API service"
+  #   global_address_name = "gke-api-lb-ip"
+  #   http_port           = 80
+  #
+  #   health_check = {
+  #     name         = "gke-api-health-check"
+  #     type         = "HTTP"
+  #     port         = 8080
+  #     request_path = "/health"
+  #   }
+  #
+  #   backend_service = {
+  #     name           = "gke-api-backend"
+  #     protocol       = "HTTP"
+  #     timeout_sec    = 60
+  #     balancing_mode = "RATE"
+  #     max_rate_per_endpoint = 500
+  #
+  #     negs = [
+  #       { name = "k8s1-abcdef-default-api-svc-8080-ghijkl", zone = "asia-southeast1-a" },
+  #       { name = "k8s1-abcdef-default-api-svc-8080-ghijkl", zone = "asia-southeast1-b" },
+  #     ]
+  #   }
+  # }
+]
+
+# ========================================
+# GKE Clusters
+# ========================================
+# Supports Autopilot (fully managed) and Standard (user-managed node pools).
+#
+# Autopilot: set enable_autopilot = true, no node_pools needed.
+# Standard:  set enable_autopilot = false, define at least one node_pool.
+#
+# Prerequisites:
+#   - VPC and subnets must exist (define in `networks` above)
+#   - For private clusters, ensure Cloud NAT is configured for outbound access
+#   - For Workload Identity, annotate KSAs after cluster creation:
+#     kubectl annotate serviceaccount KSA_NAME \
+#       --namespace NAMESPACE \
+#       iam.gke.io/gcp-service-account=GSA_NAME@PROJECT_ID.iam.gserviceaccount.com
+
+gke_clusters = [
+  # Example 1: Autopilot cluster (recommended for most workloads)
+  {
+    name             = "my-project-autopilot"
+    location         = "asia-southeast1" # Regional cluster
+    enable_autopilot = true
+
+    # Version & release channel
+    release_channel = "REGULAR"
+
+    # Networking — must reference existing VPC/subnet
+    network    = "my-project-vpc"
+    subnetwork = "app-subnet"
+
+    # VPC-native IP allocation
+    ip_allocation_policy = {
+      cluster_ipv4_cidr_block  = "/14" # Auto-create pod range
+      services_ipv4_cidr_block = "/20" # Auto-create service range
+    }
+
+    # Private cluster — nodes have no public IPs
+    private_cluster_config = {
+      enable_private_nodes    = true
+      enable_private_endpoint = false            # false = master reachable from authorized networks
+      master_ipv4_cidr_block  = "172.16.0.0/28"  # /28 required for master VPC peering
+    }
+
+    # Restrict API server access
+    master_authorized_networks = [
+      { display_name = "office-vpn", cidr_block = "203.0.113.0/24" },
+      { display_name = "cloud-shell", cidr_block = "35.235.240.0/20" },
+    ]
+
+    # DNS
+    dns_config = {
+      cluster_dns       = "CLOUD_DNS"
+      cluster_dns_scope = "CLUSTER_SCOPE"
+    }
+
+    # Gateway API
+    gateway_api_config = {
+      channel = "CHANNEL_STANDARD"
+    }
+
+    # Maintenance: weekends 1:00-9:00 UTC
+    maintenance_policy = {
+      start_time = "2024-01-01T01:00:00Z"
+      end_time   = "2024-01-01T09:00:00Z"
+      recurrence = "FREQ=WEEKLY;BYDAY=SA,SU"
+    }
+
+    # Logging & monitoring
+    logging_enabled_components               = ["SYSTEM_COMPONENTS", "WORKLOADS"]
+    monitoring_enabled_components             = ["SYSTEM_COMPONENTS"]
+    monitoring_enable_managed_prometheus = true
+
+    # Security
+    workload_identity_enabled = true
+    security_posture_config = {
+      mode               = "BASIC"
+      vulnerability_mode = "BASIC"
+    }
+
+    deletion_protection = true
+  },
+
+  # Example 2: Standard cluster with custom node pools
+  # {
+  #   name             = "my-project-standard"
+  #   location         = "asia-southeast1"
+  #   enable_autopilot = false
+  #
+  #   release_channel   = "REGULAR"
+  #   datapath_provider = "ADVANCED_DATAPATH" # Dataplane V2 (eBPF, built-in NetworkPolicy)
+  #
+  #   network    = "my-project-vpc"
+  #   subnetwork = "app-subnet"
+  #
+  #   ip_allocation_policy = {
+  #     cluster_ipv4_cidr_block  = "/14"
+  #     services_ipv4_cidr_block = "/20"
+  #   }
+  #
+  #   private_cluster_config = {
+  #     enable_private_nodes    = true
+  #     enable_private_endpoint = false
+  #     master_ipv4_cidr_block  = "172.16.1.0/28"
+  #   }
+  #
+  #   master_authorized_networks = [
+  #     { display_name = "office-vpn", cidr_block = "203.0.113.0/24" },
+  #   ]
+  #
+  #   dns_config = {
+  #     cluster_dns       = "CLOUD_DNS"
+  #     cluster_dns_scope = "CLUSTER_SCOPE"
+  #   }
+  #
+  #   maintenance_policy = {
+  #     start_time = "2024-01-01T01:00:00Z"
+  #     end_time   = "2024-01-01T09:00:00Z"
+  #     recurrence = "FREQ=WEEKLY;BYDAY=SA,SU"
+  #   }
+  #
+  #   # Addons (Standard only)
+  #   addons_config = {
+  #     http_load_balancing_disabled        = false
+  #     horizontal_pod_autoscaling_disabled = false
+  #     gce_persistent_disk_csi_enabled     = true
+  #     gcs_fuse_csi_enabled                = true
+  #     dns_cache_enabled                   = true
+  #     config_connector_enabled            = false
+  #   }
+  #
+  #   workload_identity_enabled = true
+  #   deletion_protection       = true
+  #
+  #   # Node pools (required for Standard clusters)
+  #   node_pools = [
+  #     # General-purpose pool
+  #     {
+  #       name               = "general"
+  #       machine_type       = "e2-standard-4"
+  #       disk_size_gb       = 100
+  #       disk_type          = "pd-balanced"
+  #       image_type         = "COS_CONTAINERD"
+  #       initial_node_count = 1
+  #       min_node_count     = 1
+  #       max_node_count     = 5
+  #       auto_repair        = true
+  #       auto_upgrade       = true
+  #       labels = {
+  #         pool = "general"
+  #       }
+  #     },
+  #     # Spot pool for batch/non-critical workloads
+  #     {
+  #       name               = "spot-workers"
+  #       machine_type       = "e2-standard-4"
+  #       disk_size_gb       = 50
+  #       disk_type          = "pd-standard"
+  #       spot               = true
+  #       initial_node_count = 0
+  #       min_node_count     = 0
+  #       max_node_count     = 10
+  #       labels = {
+  #         pool = "spot"
+  #       }
+  #       taints = [
+  #         { key = "cloud.google.com/gke-spot", value = "true", effect = "NO_SCHEDULE" }
+  #       ]
+  #     },
+  #     # GPU pool (optional)
+  #     # {
+  #     #   name               = "gpu-pool"
+  #     #   machine_type       = "n1-standard-4"
+  #     #   disk_size_gb       = 100
+  #     #   disk_type          = "pd-ssd"
+  #     #   initial_node_count = 0
+  #     #   min_node_count     = 0
+  #     #   max_node_count     = 2
+  #     #   guest_accelerator = {
+  #     #     type  = "nvidia-tesla-t4"
+  #     #     count = 1
+  #     #     gpu_driver_installation_config = {
+  #     #       gpu_driver_version = "DEFAULT"
+  #     #     }
+  #     #   }
+  #     #   taints = [
+  #     #     { key = "nvidia.com/gpu", value = "present", effect = "NO_SCHEDULE" }
+  #     #   ]
+  #     # }
+  #   ]
+  # }
+]

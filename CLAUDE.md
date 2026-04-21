@@ -54,9 +54,9 @@ terraform fmt -check -recursive
 
 Three-layer module architecture:
 
-1. **Root module** (`gcp/main.tf`) — Wires 6 submodules together (network, nat, iam, storage, compute, lb). Contains a `locals` block that resolves instance group name references to self_links for the LB module.
+1. **Root module** (`gcp/main.tf`) — Wires 8 submodules together (network, nat, iam, storage, compute, lb, neg-lb, gke). Contains a `locals` block that resolves instance group name references to self_links for the LB module.
 
-2. **Reusable modules** (`gcp/modules/{compute,iam,lb,nat,network,storage}/`) — Each module follows the standard `main.tf` + `variables.tf` + `outputs.tf` + `versions.tf` pattern. Resources are created with `for_each` over object maps derived from flat input lists.
+2. **Reusable modules** (`gcp/modules/{compute,gke,iam,lb,nat,neg-lb,network,storage}/`) — Each module follows the standard `main.tf` + `variables.tf` + `outputs.tf` + `versions.tf` pattern. Resources are created with `for_each` over object maps derived from flat input lists.
 
 3. **Environment configs** (`gcp/envs/{devtest,prod}/`) — Each env has its own `main.tf` (provider + backend + root module call) and `backend.hcl` (GCS bucket/prefix). `variables.tf` and `outputs.tf` are **symlinks** to `gcp/_shared/` — do not edit them in env dirs.
 
@@ -70,6 +70,8 @@ Three-layer module architecture:
 | **storage** | `google_storage_bucket`, `google_storage_bucket_iam_member` | Uniform bucket-level access, public_access_prevention enforced by default, dynamic `lifecycle_rule` blocks with `matches_prefix` support, triple-nested flatten for bucket IAM |
 | **compute** | `google_compute_address`, `google_compute_instance`, `google_compute_disk`, `google_compute_attached_disk`, `google_compute_instance_group` | Shielded instance (secure_boot, vTPM, integrity_monitoring), cloud-init via `templatefile()`, dynamic `access_config` for external IP, new vs existing disk separation |
 | **lb** | `google_compute_global_address`, `google_compute_health_check`, `google_compute_backend_service`, `google_compute_url_map`, `google_compute_target_http_proxy`, `google_compute_global_forwarding_rule`, `google_compute_managed_ssl_certificate`, `google_compute_target_https_proxy` | EXTERNAL_MANAGED scheme (new ALB), shared IP via `global_address_name`, conditional SSL/HTTPS resources, UTILIZATION or RATE balancing modes |
+| **neg-lb** | `data.google_compute_network_endpoint_group`, `google_compute_global_address`, `google_compute_health_check`, `google_compute_backend_service`, `google_compute_url_map`, `google_compute_target_http_proxy`, `google_compute_global_forwarding_rule`, `google_compute_managed_ssl_certificate`, `google_compute_target_https_proxy` | NEG-backed ALB for GKE Standalone NEGs, data source lookup of existing NEGs by name+zone, HTTP/TCP health checks, RATE or UTILIZATION balancing per endpoint, conditional SSL/HTTPS |
+| **gke** | `google_container_cluster`, `google_container_node_pool` | Autopilot and Standard modes, VPC-native networking, private cluster, master authorized networks, Dataplane V2, Cloud DNS, Gateway API, maintenance window, release channel, logging/monitoring with Managed Prometheus, addons (HTTP LB, HPA, PD CSI, GCS Fuse CSI, DNS cache, Config Connector, GKE Backup, Stateful HA), Workload Identity, security posture, node pool autoscaling/spot/GPU/taints, uses `google-beta` provider |
 
 ### AWS (modular, network module complete)
 

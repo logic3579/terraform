@@ -610,3 +610,329 @@ variable "load_balancers" {
     error_message = "Health check port must be between 1 and 65535."
   }
 }
+
+variable "neg_load_balancers" {
+  description = "List of NEG-based load balancer configurations using GKE Standalone NEG backends"
+  type = list(object({
+    name                = string
+    description         = optional(string)
+    global_address_name = optional(string)
+
+    # Port configuration
+    http_port  = optional(number, 80)
+    https_port = optional(number, 443)
+
+    # Health check configuration
+    health_check = object({
+      name                = string
+      type                = optional(string, "HTTP")
+      check_interval_sec  = optional(number, 15)
+      timeout_sec         = optional(number, 5)
+      healthy_threshold   = optional(number, 2)
+      unhealthy_threshold = optional(number, 3)
+      port                = optional(number, 80)
+      request_path        = optional(string, "/")
+    })
+
+    # Backend service configuration
+    backend_service = object({
+      name                  = string
+      protocol              = optional(string, "HTTP")
+      timeout_sec           = optional(number, 30)
+      enable_cdn            = optional(bool, false)
+      session_affinity      = optional(string, "NONE")
+      balancing_mode        = optional(string, "RATE")
+      max_rate_per_endpoint = optional(number, 1000)
+      max_utilization       = optional(number, 0.8)
+      security_policy       = optional(string)
+      enable_logging        = optional(bool, false)
+      log_sample_rate       = optional(number, 1.0)
+
+      negs = list(object({
+        name = string
+        zone = string
+      }))
+    })
+
+    # SSL configuration
+    ssl_config = optional(object({
+      enabled             = bool
+      certificate_domains = list(string)
+    }))
+  }))
+  default = []
+
+  validation {
+    condition = alltrue([
+      for lb in var.neg_load_balancers :
+      contains(["RATE", "UTILIZATION"], lb.backend_service.balancing_mode)
+    ])
+    error_message = "Backend service balancing_mode must be either 'RATE' or 'UTILIZATION'."
+  }
+
+  validation {
+    condition = alltrue([
+      for lb in var.neg_load_balancers :
+      contains(["HTTP", "HTTPS", "HTTP2", "TCP", "SSL"], lb.backend_service.protocol)
+    ])
+    error_message = "Backend service protocol must be one of: HTTP, HTTPS, HTTP2, TCP, SSL."
+  }
+
+  validation {
+    condition = alltrue([
+      for lb in var.neg_load_balancers :
+      contains(["NONE", "CLIENT_IP", "CLIENT_IP_PORT_PROTO", "CLIENT_IP_PROTO", "GENERATED_COOKIE", "HEADER_FIELD", "HTTP_COOKIE"], lb.backend_service.session_affinity)
+    ])
+    error_message = "Session affinity must be one of: NONE, CLIENT_IP, CLIENT_IP_PORT_PROTO, CLIENT_IP_PROTO, GENERATED_COOKIE, HEADER_FIELD, HTTP_COOKIE."
+  }
+
+  validation {
+    condition = alltrue([
+      for lb in var.neg_load_balancers :
+      contains(["HTTP", "TCP"], lb.health_check.type)
+    ])
+    error_message = "Health check type must be either 'HTTP' or 'TCP'."
+  }
+
+  validation {
+    condition = alltrue([
+      for lb in var.neg_load_balancers :
+      lb.backend_service.log_sample_rate >= 0 && lb.backend_service.log_sample_rate <= 1
+    ])
+    error_message = "Backend service log_sample_rate must be between 0 and 1."
+  }
+
+  validation {
+    condition = alltrue([
+      for lb in var.neg_load_balancers :
+      lb.http_port >= 1 && lb.http_port <= 65535
+    ])
+    error_message = "HTTP port must be between 1 and 65535."
+  }
+
+  validation {
+    condition = alltrue([
+      for lb in var.neg_load_balancers :
+      lb.https_port >= 1 && lb.https_port <= 65535
+    ])
+    error_message = "HTTPS port must be between 1 and 65535."
+  }
+
+  validation {
+    condition = alltrue([
+      for lb in var.neg_load_balancers :
+      lb.health_check.port >= 1 && lb.health_check.port <= 65535
+    ])
+    error_message = "Health check port must be between 1 and 65535."
+  }
+
+  validation {
+    condition = alltrue([
+      for lb in var.neg_load_balancers :
+      lb.backend_service.max_utilization >= 0 && lb.backend_service.max_utilization <= 1
+    ])
+    error_message = "Backend service max_utilization must be between 0 and 1."
+  }
+
+  validation {
+    condition = alltrue([
+      for lb in var.neg_load_balancers :
+      length(lb.backend_service.negs) > 0
+    ])
+    error_message = "Backend service must have at least one NEG."
+  }
+}
+
+variable "gke_clusters" {
+  description = "List of GKE cluster configurations (Autopilot or Standard)"
+  type = list(object({
+    name             = string
+    location         = string
+    enable_autopilot = optional(bool, false)
+
+    min_master_version = optional(string)
+    release_channel    = optional(string, "REGULAR")
+
+    network         = string
+    subnetwork      = string
+    networking_mode = optional(string, "VPC_NATIVE")
+    ip_allocation_policy = optional(object({
+      cluster_secondary_range_name  = optional(string)
+      services_secondary_range_name = optional(string)
+      cluster_ipv4_cidr_block       = optional(string)
+      services_ipv4_cidr_block      = optional(string)
+    }))
+
+    private_cluster_config = optional(object({
+      enable_private_nodes    = bool
+      enable_private_endpoint = optional(bool, false)
+      master_ipv4_cidr_block  = string
+    }))
+
+    master_authorized_networks = optional(list(object({
+      display_name = string
+      cidr_block   = string
+    })), [])
+
+    deletion_protection = optional(bool, true)
+    datapath_provider   = optional(string)
+
+    dns_config = optional(object({
+      cluster_dns        = optional(string, "CLOUD_DNS")
+      cluster_dns_scope  = optional(string, "CLUSTER_SCOPE")
+      cluster_dns_domain = optional(string)
+    }))
+
+    gateway_api_config = optional(object({
+      channel = string
+    }))
+
+    maintenance_policy = optional(object({
+      start_time = string
+      end_time   = string
+      recurrence = string
+    }))
+
+    logging_enabled_components    = optional(list(string), ["SYSTEM_COMPONENTS", "WORKLOADS"])
+    monitoring_enabled_components = optional(list(string), ["SYSTEM_COMPONENTS"])
+
+    monitoring_enable_managed_prometheus = optional(bool, true)
+
+    addons_config = optional(object({
+      http_load_balancing_disabled        = optional(bool, false)
+      horizontal_pod_autoscaling_disabled = optional(bool, false)
+      network_policy_enabled              = optional(bool, false)
+      gce_persistent_disk_csi_enabled     = optional(bool, true)
+      gcs_fuse_csi_enabled                = optional(bool, false)
+      dns_cache_enabled                   = optional(bool, false)
+      config_connector_enabled            = optional(bool, false)
+      gke_backup_agent_enabled            = optional(bool, false)
+      stateful_ha_enabled                 = optional(bool, false)
+    }), {})
+
+    workload_identity_enabled = optional(bool, true)
+    security_posture_config = optional(object({
+      mode               = optional(string, "BASIC")
+      vulnerability_mode = optional(string, "BASIC")
+    }))
+
+    node_pools = optional(list(object({
+      name               = string
+      machine_type       = optional(string, "e2-medium")
+      disk_size_gb       = optional(number, 100)
+      disk_type          = optional(string, "pd-balanced")
+      image_type         = optional(string, "COS_CONTAINERD")
+      local_ssd_count    = optional(number, 0)
+      initial_node_count = optional(number, 1)
+      min_node_count     = optional(number, 0)
+      max_node_count     = optional(number, 3)
+      location_policy    = optional(string, "BALANCED")
+      spot               = optional(bool, false)
+      preemptible        = optional(bool, false)
+      auto_repair        = optional(bool, true)
+      auto_upgrade       = optional(bool, true)
+      max_surge          = optional(number, 1)
+      max_unavailable    = optional(number, 0)
+      labels             = optional(map(string), {})
+      tags               = optional(list(string), [])
+      taints = optional(list(object({
+        key    = string
+        value  = string
+        effect = string
+      })), [])
+      service_account = optional(string)
+      oauth_scopes = optional(list(string), [
+        "https://www.googleapis.com/auth/cloud-platform",
+      ])
+      enable_secure_boot          = optional(bool, true)
+      enable_integrity_monitoring = optional(bool, true)
+      guest_accelerator = optional(object({
+        type               = string
+        count              = number
+        gpu_partition_size = optional(string)
+        gpu_sharing_config = optional(object({
+          gpu_sharing_strategy       = string
+          max_shared_clients_per_gpu = number
+        }))
+        gpu_driver_installation_config = optional(object({
+          gpu_driver_version = optional(string, "DEFAULT")
+        }))
+      }))
+    })), [])
+
+    resource_labels = optional(map(string), {})
+  }))
+  default = []
+
+  validation {
+    condition = alltrue([
+      for c in var.gke_clusters :
+      contains(["RAPID", "REGULAR", "STABLE", "UNSPECIFIED"], c.release_channel)
+    ])
+    error_message = "Release channel must be one of: RAPID, REGULAR, STABLE, UNSPECIFIED."
+  }
+
+  validation {
+    condition = alltrue([
+      for c in var.gke_clusters :
+      contains(["VPC_NATIVE", "ROUTES"], c.networking_mode)
+    ])
+    error_message = "Networking mode must be either 'VPC_NATIVE' or 'ROUTES'."
+  }
+
+  validation {
+    condition = alltrue([
+      for c in var.gke_clusters :
+      c.datapath_provider == null || contains(["ADVANCED_DATAPATH", "LEGACY_DATAPATH"], c.datapath_provider)
+    ])
+    error_message = "Datapath provider must be 'ADVANCED_DATAPATH' or 'LEGACY_DATAPATH'."
+  }
+
+  validation {
+    condition = alltrue([
+      for c in var.gke_clusters :
+      !c.enable_autopilot || length(c.node_pools) == 0
+    ])
+    error_message = "Autopilot clusters must not define node_pools — node pools are managed automatically."
+  }
+
+  validation {
+    condition = alltrue([
+      for c in var.gke_clusters :
+      c.enable_autopilot || length(c.node_pools) > 0
+    ])
+    error_message = "Standard clusters must define at least one node_pool."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for c in var.gke_clusters : [
+        for np in c.node_pools :
+        contains(["pd-standard", "pd-balanced", "pd-ssd"], np.disk_type)
+      ]
+    ]))
+    error_message = "Node pool disk_type must be one of: pd-standard, pd-balanced, pd-ssd."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for c in var.gke_clusters : [
+        for np in c.node_pools :
+        np.min_node_count <= np.max_node_count
+      ]
+    ]))
+    error_message = "Node pool min_node_count must be less than or equal to max_node_count."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for c in var.gke_clusters : [
+        for np in c.node_pools : [
+          for t in np.taints :
+          contains(["NO_SCHEDULE", "PREFER_NO_SCHEDULE", "NO_EXECUTE"], t.effect)
+        ]
+      ]
+    ]))
+    error_message = "Taint effect must be one of: NO_SCHEDULE, PREFER_NO_SCHEDULE, NO_EXECUTE."
+  }
+}

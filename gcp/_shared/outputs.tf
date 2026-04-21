@@ -75,3 +75,30 @@ output "disk_names" {
   description = "Additional disk names (new disks only)"
   value       = module.gcp.disk_names
 }
+
+output "neg_lb_ip_addresses" {
+  description = "NEG load balancer IP addresses"
+  value       = module.gcp.neg_lb_ip_addresses
+}
+
+output "neg_lb_urls" {
+  description = "NEG load balancer URLs"
+  value       = module.gcp.neg_lb_urls
+}
+
+output "gke_cluster_names" {
+  description = "GKE cluster names"
+  value       = module.gcp.gke_cluster_names
+}
+
+output "gke_cluster_endpoints" {
+  description = "GKE cluster endpoints"
+  value       = module.gcp.gke_cluster_endpoints
+  sensitive   = true
+}
+
+output "gke_cluster_ca_certificates" {
+  description = "GKE cluster CA certificates (base64 encoded)"
+  value       = module.gcp.gke_cluster_ca_certificates
+  sensitive   = true
+}

@@ -58,5 +58,9 @@ module "gcp" {
   instance_groups = var.instance_groups
 
   # Load balancer resources
-  load_balancers = var.load_balancers
+  load_balancers     = var.load_balancers
+  neg_load_balancers = var.neg_load_balancers
+
+  # GKE clusters
+  gke_clusters = var.gke_clusters
 }

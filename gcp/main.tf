@@ -64,3 +64,19 @@ module "lb" {
   labels         = var.labels
   load_balancers = local.load_balancers_with_self_links
 }
+
+# 7. NEG-based load balancer resources (backed by GKE Standalone NEGs)
+module "neg_lb" {
+  source             = "./modules/neg-lb"
+  project_id         = var.project_id
+  labels             = var.labels
+  neg_load_balancers = var.neg_load_balancers
+}
+
+# 8. GKE clusters (Autopilot or Standard with node pools)
+module "gke" {
+  source       = "./modules/gke"
+  project_id   = var.project_id
+  labels       = var.labels
+  gke_clusters = var.gke_clusters
+}

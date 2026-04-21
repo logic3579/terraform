@@ -81,3 +81,15 @@ variable "load_balancers" {
   type        = any # Full type definition in gcp/variables.tf
   default     = []
 }
+
+variable "neg_load_balancers" {
+  description = "List of NEG-based load balancer configurations"
+  type        = any # Full type definition in gcp/variables.tf
+  default     = []
+}
+
+variable "gke_clusters" {
+  description = "List of GKE cluster configurations"
+  type        = any # Full type definition in gcp/variables.tf
+  default     = []
+}
