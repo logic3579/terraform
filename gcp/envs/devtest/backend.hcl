@@ -1,2 +1,2 @@
-bucket = "revosurge-data-prod"
-prefix = "gcp/devtest"
+bucket = "myproject-data-bucket"
+prefix = "terraform/devtest"
