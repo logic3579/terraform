@@ -1,0 +1,86 @@
+# OpenStack environment configuration
+# Copy this file to envs/<env>/terraform.tfvars and update values.
+
+# ========================================
+# Provider authentication (Keystone v3)
+# ========================================
+auth_url            = "https://keystone.example.com:5000/v3"
+region              = "RegionOne"
+user_name           = "admin"
+password            = "REPLACE_ME"
+tenant_name         = "admin"
+user_domain_name    = "Default"
+project_domain_name = "Default"
+insecure            = false
+
+# ========================================
+# Network — networks, subnets, routers, SGs, FIPs
+# ========================================
+networks = [
+  {
+    name = "app-net"
+    subnets = [
+      {
+        name            = "app-subnet"
+        cidr            = "10.0.10.0/24"
+        dns_nameservers = ["8.8.8.8", "1.1.1.1"]
+      },
+    ]
+  },
+]
+
+routers = [
+  {
+    name                  = "edge-router"
+    external_network_name = "public" # an existing external network in the cloud
+    interfaces = [
+      { network_name = "app-net", subnet_name = "app-subnet" },
+    ]
+  },
+]
+
+security_groups = [
+  {
+    name        = "web-sg"
+    description = "HTTP/HTTPS from anywhere"
+    rules = [
+      { direction = "ingress", protocol = "tcp", port_range_min = 80, port_range_max = 80, remote_ip_prefix = "0.0.0.0/0" },
+      { direction = "ingress", protocol = "tcp", port_range_min = 443, port_range_max = 443, remote_ip_prefix = "0.0.0.0/0" },
+      { direction = "ingress", protocol = "tcp", port_range_min = 22, port_range_max = 22, remote_ip_prefix = "10.0.0.0/8" },
+    ]
+  },
+]
+
+floating_ips = [
+  { name = "web-fip", pool = "public" },
+]
+
+# ========================================
+# Compute — keypairs + instances
+# ========================================
+keypairs = [
+  { name = "ops", public_key = "ssh-ed25519 AAAA... ops@bastion" },
+]
+
+instances = [
+  {
+    name            = "web-01"
+    image_name      = "Ubuntu-24.04"
+    flavor_name     = "m1.small"
+    keypair_name    = "ops"
+    security_groups = ["web-sg", "default"]
+    networks = [
+      { network_name = "app-net" },
+    ]
+  },
+]
+
+# ========================================
+# Storage — Cinder volumes
+# ========================================
+volumes = [
+  {
+    name = "data-01"
+    size = 50
+  },
+]

@@ -1,0 +1,76 @@
+# Proxmox VE environment configuration
+# Copy this file to envs/<env>/terraform.tfvars and update values.
+
+# ========================================
+# Provider authentication
+# ========================================
+endpoint = "https://pve.example.com:8006/"
+insecure = false
+
+# Preferred: API token (create via Datacenter → Permissions → API Tokens)
+api_token = "terraform@pve!tfci=00000000-0000-0000-0000-000000000000"
+
+# Alternative: username + password (leave api_token = null if you use these)
+# username = "root@pam"
+# password = "REPLACE_ME"
+
+# Optional: SSH config — only needed if you upload snippets / cloud-init userdata
+# ssh_username    = "root"
+# ssh_private_key = file("~/.ssh/id_ed25519")
+
+# ========================================
+# Network — Linux bridges
+# ========================================
+bridges = [
+  {
+    node_name  = "pve01"
+    name       = "vmbr1"
+    address    = "10.10.0.1/24"
+    comment    = "VM internal network"
+    vlan_aware = true
+  },
+]
+
+# ========================================
+# Storage — downloaded ISOs / cloud images
+# ========================================
+download_files = [
+  {
+    name         = "ubuntu-2404-cloud"
+    node_name    = "pve01"
+    datastore_id = "local"
+    content_type = "iso"
+    url          = "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
+    file_name    = "ubuntu-2404-cloudimg-amd64.img"
+  },
+]
+
+# ========================================
+# Compute — KVM virtual machines
+# ========================================
+vms = [
+  {
+    name      = "test-vm-01"
+    node_name = "pve01"
+    vm_id     = 9001
+    tags      = ["devtest", "terraform"]
+
+    cpu_cores        = 2
+    memory_dedicated = 2048
+
+    disks = [
+      { interface = "scsi0", datastore_id = "local-lvm", size = 20 },
+    ]
+
+    network_devices = [
+      { bridge = "vmbr1", model = "virtio" },
+    ]
+
+    cloud_init = {
+      datastore_id = "local-lvm"
+      username     = "ubuntu"
+      ssh_keys     = ["ssh-ed25519 AAAA... user@host"]
+      ipv4_address = "dhcp"
+    }
+  },
+]

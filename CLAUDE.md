@@ -48,6 +48,33 @@ terraform validate
 terraform fmt -check -recursive
 ```
 
+Proxmox VE Terraform operations run from environment directories (`proxmox/envs/devtest/`):
+
+```bash
+# Initialize (local backend — no -backend-config needed)
+cd proxmox/envs/devtest
+terraform init
+
+# Plan and apply
+terraform plan
+terraform apply
+```
+
+OpenStack Terraform operations run from environment directories (`openstack/envs/devtest/`):
+
+```bash
+# State backend uses Swift's S3-compatible API; export EC2 creds first
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+
+cd openstack/envs/devtest
+terraform init -backend-config=backend.hcl
+
+# Plan and apply
+terraform plan
+terraform apply
+```
+
 ## Architecture
 
 ### GCP (primary, production-ready)
@@ -89,7 +116,49 @@ Same three-layer architecture as GCP:
 
 `aws_vpc` (DNS support + hostnames), `aws_subnet`, `aws_internet_gateway` (conditional on public subnets), `aws_eip` + `aws_nat_gateway`, `aws_route_table` + `aws_route` + `aws_route_table_association` (public/private/isolated), `aws_security_group` + `aws_vpc_security_group_ingress_rule` / `aws_vpc_security_group_egress_rule`.
 
-### Key patterns (shared by GCP and AWS)
+### Proxmox VE (basic, extensible)
+
+Same three-layer architecture as GCP/AWS:
+
+1. **Root module** (`proxmox/main.tf`) — Calls 3 submodules (network, storage, compute). Provider/backend live in `envs/<env>/main.tf`.
+
+2. **Reusable modules** (`proxmox/modules/{network,storage,compute}/`) — Standard `main.tf` + `variables.tf` + `outputs.tf` + `versions.tf` pattern. Resources use `for_each` over object maps; compute uses `dynamic` blocks for `disk`, `network_device`, and `initialization` (cloud-init).
+
+3. **Environment configs** (`proxmox/envs/devtest/`) — Provider + local backend + root module call. `variables.tf` and `outputs.tf` are **symlinks** to `proxmox/_shared/`.
+
+#### Proxmox module details
+
+| Module | Resources | Key features |
+|--------|-----------|--------------|
+| **network** | `proxmox_virtual_environment_network_linux_bridge` | Linux bridges (vmbrN) on PVE nodes, optional CIDR/gateway/VLAN-aware/MTU |
+| **storage** | `proxmox_virtual_environment_download_file` | Downloads ISOs / cloud images / LXC templates (vztmpl) into a PVE datastore; output `id` usable as `file_id` on a VM disk |
+| **compute** | `proxmox_virtual_environment_vm` | KVM VMs with `cpu`/`memory`/`agent` blocks, dynamic `disk` and `network_device` lists, optional cloud-init `initialization` (user_account / ip_config / dns dynamic sub-blocks) |
+
+**Provider auth**: API token preferred (`user@realm!tokenid=secret`), with username/password fallback. Optional `ssh` block for snippet uploads.
+
+**Provider version pin**: `bpg/proxmox` is pinned to `~> 0.104.0`. v0.105 introduced a Plugin Framework rewrite of the network resources that has a schema bug on the `ports` attribute, breaking `terraform validate`. Bump the pin (and rename to `proxmox_network_linux_bridge`) once upstream fixes it.
+
+### OpenStack (basic, extensible)
+
+Same three-layer architecture as GCP/AWS:
+
+1. **Root module** (`openstack/main.tf`) — Calls 3 submodules (network, storage, compute). The compute module receives `network_id_by_name` and `volume_id_by_name` maps from the network/storage modules so instances can reference them by name.
+
+2. **Reusable modules** (`openstack/modules/{network,storage,compute}/`) — Standard pattern. Network module flattens nested subnets, router interfaces, and SG rules with `flatten()` + compound keys.
+
+3. **Environment configs** (`openstack/envs/devtest/`) — Provider + S3 backend (pointed at Swift's S3-compatible API) + root module call. `variables.tf` / `outputs.tf` are **symlinks** to `openstack/_shared/`.
+
+#### OpenStack module details
+
+| Module | Resources | Key features |
+|--------|-----------|--------------|
+| **network** | `openstack_networking_network_v2`, `_subnet_v2`, `_router_v2`, `_router_interface_v2`, `_secgroup_v2`, `_secgroup_rule_v2`, `_floatingip_v2` (+ `data.openstack_networking_network_v2` for external-network lookups) | Flatten subnets/interfaces/rules into compound-keyed maps; SG rules can reference another SG by name (`remote_group`) |
+| **compute** | `openstack_compute_instance_v2`, `_keypair_v2` (+ `data.openstack_images_image_v2` and `data.openstack_compute_flavor_v2`) | Image/flavor resolved by name via data sources; dynamic `network` blocks; optional `block_device` boot from a Cinder volume created by the storage module |
+| **storage** | `openstack_blockstorage_volume_v3` (+ `data.openstack_images_image_v2` for source images) | Cinder volumes with optional source image |
+
+**Provider auth**: Keystone v3 (separate `user_domain_name` / `project_domain_name`).
+
+### Key patterns (shared by GCP, AWS, Proxmox, OpenStack)
 
 - **Flattening nested inputs**: Modules use `locals` with `flatten()` to convert nested lists (e.g., networks with subnets) into flat maps keyed by compound keys like `"vpc-name/subnet-name"` for use with `for_each`.
 - **Optional attributes with defaults**: Variables use `optional(type, default)` extensively (e.g., `disk_size = optional(number, 20)`).
@@ -104,13 +173,17 @@ Same three-layer architecture as GCP:
 
 - **GCP**: GCS backend per environment, configured via `backend.hcl` files. Same GCS bucket stores both state files and team-shared tfvars (via `tfvars-sync.sh`). State prefix pattern: `gcp/{env_name}` (e.g., `gcp/devtest`, `gcp/prod`).
 - **AWS**: S3 backend per environment, configured via `backend.hcl` files. State key pattern: `aws/{env_name}/terraform.tfstate`.
+- **Proxmox**: Local backend (`terraform.tfstate` in the env dir). Proxmox has no native Terraform backend — common alternatives for team use are an S3-compatible store like MinIO or the HTTP backend backed by GitLab/Gitea.
+- **OpenStack**: S3 backend pointed at Swift's S3-compatible API (the native `swift` backend was removed in Terraform 1.3). Generate Swift EC2 credentials with `openstack ec2 credentials create`, export them as `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`, then `terraform init -backend-config=backend.hcl`. State key pattern: `openstack/{env_name}/terraform.tfstate`.
 
 ### What's gitignored
 
-`*.tfvars`, `*.tfstate`, `*.json` (except tfvars.json), `**/keys/`, `.terraform/`. Use `gcp/envs/terraform.tfvars.example` and `aws/envs/terraform.tfvars.example` as the reference templates for tfvars.
+`*.tfvars`, `*.tfstate`, `*.json` (except tfvars.json), `**/keys/`, `.terraform/`. Use `gcp/envs/terraform.tfvars.example`, `aws/envs/terraform.tfvars.example`, `proxmox/envs/terraform.tfvars.example`, and `openstack/envs/terraform.tfvars.example` as the reference templates for tfvars.
 
 ## Provider versions
 
 - Terraform `~> 1.5`
 - `hashicorp/google` and `hashicorp/google-beta` `~> 7.0`
 - `hashicorp/aws` `~> 5.0`
+- `bpg/proxmox` `~> 0.104.0` (see Proxmox section for the pin reason)
+- `terraform-provider-openstack/openstack` `~> 3.4`
