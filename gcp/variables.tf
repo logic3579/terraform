@@ -389,8 +389,7 @@ variable "instances" {
 
     # Cloud-init configuration
     cloud_init = optional(object({
-      enabled        = bool
-      install_docker = optional(bool, true)
+      enabled = bool
       packages = optional(list(string), [
         "htop",
         "net-tools",

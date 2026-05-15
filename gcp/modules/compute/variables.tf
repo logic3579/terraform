@@ -48,8 +48,7 @@ variable "instances" {
 
     # Cloud-init configuration
     cloud_init = optional(object({
-      enabled        = bool                 # Enable cloud-init
-      install_docker = optional(bool, true) # Install Docker from official repository (default: true)
+      enabled = bool # Enable cloud-init
       packages = optional(list(string), [
         "htop",
         "net-tools",

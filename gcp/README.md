@@ -200,7 +200,6 @@ Manages Compute Engine VMs and instance groups with cloud-init support.
 **Key Features**:
 
 - **Cloud-Init Support**: Declarative VM initialization using YAML configuration
-  - Optional Docker installation from official repository (enabled by default)
   - Configurable hostname (short name, FQDN uses GCP default)
   - Customizable package installation (default: htop, net-tools, iputils-ping)
   - Extensible via `additional_config` for custom cloud-init YAML
@@ -220,13 +219,11 @@ instances = [
     # ... other required fields ...
 
     cloud_init = {
-      enabled        = true                    # Enable cloud-init
-      hostname       = "my-server"             # Optional: short hostname
-      install_docker = true                    # Optional: install Docker (default: true)
-      packages       = ["vim", "git", "jq"]    # Optional: additional packages
-      additional_config = <<-EOT               # Optional: custom cloud-init YAML
+      enabled           = true                 # Enable cloud-init
+      hostname          = "my-server"          # Optional: short hostname
+      packages          = ["vim", "git", "jq"] # Optional: additional packages
+      additional_config = <<-EOT                # Optional: custom cloud-init YAML
         runcmd:
-          - docker pull nginx:latest
           - echo "Init complete" > /var/log/init.txt
       EOT
     }
@@ -236,10 +233,6 @@ instances = [
 
 **Cloud-Init Features**:
 
-- **Docker Installation**: Latest Docker CE from official repository
-  - Auto-configured with buildx and compose plugins
-  - Enabled by default (`install_docker = true`)
-  - Set `install_docker = false` to skip Docker installation
 - **Package Management**: Automatically updates package index
 - **Logging**: All cloud-init output logged to `/var/log/cloud-init-output.log`
 - **Timezone**: UTC by default
@@ -367,13 +360,12 @@ The compute module uses [cloud-init](https://cloud-init.io/) for declarative VM 
 | ------------------- | ------------ | ------------------------------------------ | -------------------------------------------- |
 | `enabled`           | bool         | _required_                                 | Enable cloud-init for this instance          |
 | `hostname`          | string       | `null`                                     | Short hostname (FQDN uses GCP default)       |
-| `install_docker`    | bool         | `true`                                     | Install Docker CE from official repository   |
 | `packages`          | list(string) | `["htop", "net-tools", "iputils-ping"]`    | Additional packages to install               |
 | `additional_config` | string       | `""`                                       | Custom cloud-init YAML (appended to config)  |
 
 ### Example Configurations
 
-#### Basic Setup (Docker + Default Packages)
+#### Basic Setup
 
 ```hcl
 cloud_init = {
@@ -382,15 +374,14 @@ cloud_init = {
 }
 ```
 
-**Result**: VM with hostname `web-server-1`, Docker installed, default packages (htop, net-tools, iputils-ping).
+**Result**: VM with hostname `web-server-1`, default packages (htop, net-tools, iputils-ping).
 
-#### Custom Packages Without Docker
+#### Custom Packages
 
 ```hcl
 cloud_init = {
   enabled        = true
   hostname       = "app-server"
-  install_docker = false  # Skip Docker installation
   packages = [
     "python3-pip",
     "nginx",
@@ -399,34 +390,26 @@ cloud_init = {
 }
 ```
 
-**Result**: Lightweight VM without Docker, custom packages installed.
+**Result**: VM with custom packages installed.
 
-#### Advanced: Docker + Custom Initialization
+#### Advanced: Custom Initialization
 
 ```hcl
 cloud_init = {
-  enabled        = true
-  hostname       = "docker-host"
-  install_docker = true
-  packages       = ["git", "jq", "vim"]
+  enabled  = true
+  hostname = "app-host"
+  packages = ["git", "jq", "vim"]
   additional_config = <<-EOT
-    # Pull Docker images on first boot
-    runcmd:
-      - docker pull nginx:latest
-      - docker pull redis:alpine
-      - docker network create app-network
-
     # Create systemd service
     write_files:
       - path: /etc/systemd/system/my-app.service
         content: |
           [Unit]
           Description=My Application
-          After=docker.service
-          Requires=docker.service
+          After=network-online.target
 
           [Service]
-          ExecStart=/usr/bin/docker run --rm nginx:latest
+          ExecStart=/usr/bin/env bash -lc 'echo app started'
           Restart=always
 
           [Install]
@@ -441,39 +424,7 @@ cloud_init = {
 }
 ```
 
-**Result**: Full Docker environment with pre-pulled images, custom systemd service.
-
-### Docker Installation Details
-
-When `install_docker = true` (default), the following is installed:
-
-- **Docker CE** (Community Edition) - Latest stable version
-- **Docker CLI** - Command-line interface
-- **containerd.io** - Container runtime
-- **docker-buildx-plugin** - Build with BuildKit
-- **docker-compose-plugin** - Docker Compose V2
-
-**Installation Method**:
-- Uses official Docker repository (download.docker.com)
-- Installs GPG key for package verification
-- Configures APT source for latest updates
-- Enables Docker service with systemd
-
-**Verify Installation** (after VM creation):
-```bash
-# SSH into the instance
-gcloud compute ssh INSTANCE_NAME
-
-# Check Docker version
-docker --version
-# Output: Docker version 27.x.x, build ...
-
-# Verify Docker is running
-sudo systemctl status docker
-
-# Test Docker
-sudo docker run hello-world
-```
+**Result**: Full custom initialization with systemd service.
 
 ### Cloud-Init Troubleshooting
 
@@ -504,9 +455,8 @@ sudo cloud-init query userdata
 - Ensure network connectivity during first boot
 
 **2. Docker Not Working**
-- Verify `install_docker = true` in configuration
-- Check Docker installation logs: `sudo journalctl -u docker`
-- Verify Docker service: `sudo systemctl status docker`
+- Ensure your `additional_config` does not assume Docker is preinstalled
+- Check your own package/bootstrap commands in `additional_config`
 
 **3. Hostname Not Set**
 - Ensure `hostname` is valid (lowercase, alphanumeric, hyphens only)
@@ -642,10 +592,9 @@ The `instances` variable is a list of VM instance configurations with cloud-init
 
 ```hcl
 cloud_init = {
-  enabled        = bool                 # Required: Enable cloud-init
-  hostname       = optional(string)     # Optional: Short hostname
-  install_docker = optional(bool, true) # Optional: Install Docker (default: true)
-  packages       = optional(list(string), [
+  enabled  = bool             # Required: Enable cloud-init
+  hostname = optional(string) # Optional: Short hostname
+  packages = optional(list(string), [
     "htop",
     "net-tools",
     "iputils-ping"

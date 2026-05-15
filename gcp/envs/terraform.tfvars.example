@@ -290,16 +290,14 @@ buckets = [
 #
 # All instances are initialized using cloud-init.
 # Cloud-init configuration:
-#   - Docker installation (optional, enabled by default from official repository)
 #   - Configurable packages (defaults: htop, net-tools, iputils-ping)
 #   - Support for additional cloud-init YAML via additional_config
 #
 # To enable cloud-init:
 #   cloud_init = {
-#     enabled        = true
-#     install_docker = true            # Optional, default: true (install Docker)
-#     packages       = ["vim", "git"]  # Optional, additional packages
-#     additional_config = "..."        # Optional, additional cloud-init YAML
+#     enabled           = true
+#     packages          = ["vim", "git"]  # Optional, additional packages
+#     additional_config = "..."           # Optional, additional cloud-init YAML
 #   }
 
 instances = [
@@ -320,7 +318,7 @@ instances = [
     preemptible            = false # Optional, default: false
     deletion_protection    = true # Optional, default: false
 
-    # Cloud-init with Docker pre-installed
+    # Cloud-init enabled
     cloud_init = {
       enabled = true
     }
@@ -356,10 +354,8 @@ instances = [
     subnetwork    = "app-subnet"
 
     # Cloud-init with custom packages and additional configuration
-    # Note: Docker installation enabled by default
     cloud_init = {
-      enabled        = true
-      install_docker = false
+      enabled = true
       packages = [
         "vim",
         "git",
@@ -368,7 +364,6 @@ instances = [
       additional_config = <<-EOT
         # Additional custom configuration
         runcmd:
-          - docker pull nginx:latest
           - echo "Custom initialization complete" > /var/log/init-complete.txt
       EOT
     }
@@ -390,8 +385,7 @@ instances = [
 
     # Cloud-init configuration
     cloud_init = {
-      enabled        = true
-      install_docker = true # Set to false to disable Docker installation
+      enabled = true
       packages = [
         "nodejs",
         "nginx"
