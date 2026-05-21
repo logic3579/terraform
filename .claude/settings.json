@@ -1,8 +1,22 @@
 {
+  "extraKnownMarketplaces": {
+    "buildwithclaude": {
+      "source": {
+        "source": "github",
+        "repo": "davepoon/buildwithclaude"
+      }
+    },
+    "hashicorp": {
+      "source": {
+        "source": "github",
+        "repo": "hashicorp/agent-skills"
+      }
+    }
+  },
   "enabledPlugins": {
+    "agents-infrastructure-operations@buildwithclaude": true,
     "terraform-code-generation@hashicorp": true,
     "terraform-module-generation@hashicorp": true,
-    "terraform-provider-development@hashicorp": true,
-    "agents-infrastructure-operations@buildwithclaude": true
+    "terraform-provider-development@hashicorp": true
   }
 }
