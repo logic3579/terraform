@@ -1,7 +1,7 @@
 # Environment Configuration
 # Copy this file to terraform.tfvars and update with your actual values
 
-env = "test"  # Environment name: dev, test, devtest, uat, prod
+env = "dev"  # Environment name: dev, test, uat, prod
 
 labels = {
   organization = "my-org"          # Your organization name

@@ -7,7 +7,7 @@ Manages Proxmox VE infrastructure via the [`bpg/proxmox`](https://registry.terra
 ```
 proxmox/
 ├── _shared/              # variable / output decls (symlinked from each env)
-├── envs/devtest/         # devtest env: provider + backend + module call
+├── envs/dev/            # dev env: provider + backend + module call (copy to test/prod as needed)
 ├── modules/
 │   ├── network/          # Linux bridges (vmbrN)
 │   ├── storage/          # ISOs / cloud images / LXC templates downloaded to PVE
@@ -21,7 +21,7 @@ proxmox/
 ## Usage
 
 ```bash
-cd proxmox/envs/devtest
+cd proxmox/envs/dev
 cp ../terraform.tfvars.example terraform.tfvars   # then edit values
 
 terraform init

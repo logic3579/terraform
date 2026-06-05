@@ -4,7 +4,7 @@
 #
 # Examples:
 #   ./scripts/tfvars-sync.sh download           # Download all environments
-#   ./scripts/tfvars-sync.sh download devtest   # Download specific environment
+#   ./scripts/tfvars-sync.sh download dev       # Download specific environment
 #   ./scripts/tfvars-sync.sh upload             # Upload all environments
 #   ./scripts/tfvars-sync.sh upload prod        # Upload specific environment
 
@@ -32,12 +32,12 @@ usage() {
   echo "  download  - Download terraform.tfvars from GCS bucket"
   echo ""
   echo "Options:"
-  echo "  environment - Specific environment (e.g., devtest, prod)"
+  echo "  environment - Specific environment (e.g., dev, prod)"
   echo "                If omitted, syncs all environments"
   echo ""
   echo "Examples:"
   echo "  $0 download              # Download all environments"
-  echo "  $0 download devtest      # Download devtest only"
+  echo "  $0 download dev          # Download dev only"
   echo "  $0 upload                # Upload all environments"
   echo "  $0 upload prod           # Upload prod only"
   echo ""

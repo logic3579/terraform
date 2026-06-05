@@ -1,4 +1,4 @@
-# Devtest environment configuration
+# Dev environment configuration
 
 terraform {
   required_version = "~> 1.5"

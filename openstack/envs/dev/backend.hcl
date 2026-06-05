@@ -7,7 +7,7 @@
 #   export AWS_SECRET_ACCESS_KEY=<secret>
 
 bucket = "tfstate"
-key    = "openstack/devtest/terraform.tfstate"
+key    = "openstack/dev/terraform.tfstate"
 region = "RegionOne"
 
 endpoints = {

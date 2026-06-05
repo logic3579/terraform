@@ -34,7 +34,7 @@ All commands run from the env directory.
 ### GCP
 
 ```bash
-cd gcp/envs/devtest
+cd gcp/envs/dev
 cp ../terraform.tfvars.example terraform.tfvars   # then edit
 terraform init -backend-config=backend.hcl
 terraform plan
@@ -44,7 +44,7 @@ terraform apply
 ### AWS
 
 ```bash
-cd aws/envs/devtest
+cd aws/envs/dev
 cp ../terraform.tfvars.example terraform.tfvars   # then edit
 terraform init -backend-config=backend.hcl        # or: terraform init -backend=false
 terraform plan
@@ -54,7 +54,7 @@ terraform apply
 ### Proxmox VE
 
 ```bash
-cd proxmox/envs/devtest
+cd proxmox/envs/dev
 cp ../terraform.tfvars.example terraform.tfvars   # then edit
 terraform init                                    # local backend
 terraform plan
@@ -64,7 +64,7 @@ terraform apply
 ### OpenStack
 
 ```bash
-cd openstack/envs/devtest
+cd openstack/envs/dev
 cp ../terraform.tfvars.example terraform.tfvars   # then edit
 
 # State backend uses Swift's S3-compatible API

@@ -7,7 +7,7 @@ Manages OpenStack infrastructure via the [`terraform-provider-openstack/openstac
 ```
 openstack/
 ├── _shared/              # variable / output decls (symlinked from each env)
-├── envs/devtest/         # devtest env: provider + backend + module call
+├── envs/dev/            # dev env: provider + backend + module call (copy to test/prod as needed)
 ├── modules/
 │   ├── network/          # networks, subnets, routers, secgroups, floating IPs
 │   ├── compute/          # instances + keypairs
@@ -21,7 +21,7 @@ openstack/
 ## Usage
 
 ```bash
-cd openstack/envs/devtest
+cd openstack/envs/dev
 cp ../terraform.tfvars.example terraform.tfvars   # then edit values
 
 # state backend uses Swift's S3-compatible API; export EC2 creds first

@@ -27,9 +27,9 @@ This directory contains Terraform configurations for managing GCP infrastructure
 2. Create `backend.hcl` in each environment directory:
 
    ```hcl
-   # gcp/envs/devtest/backend.hcl
+   # gcp/envs/dev/backend.hcl
    bucket = "YOUR-TERRAFORM-STATE-BUCKET"
-   prefix = "gcp/devtest"
+   prefix = "gcp/dev"
    ```
 
 3. Initialize Terraform with backend config:
@@ -67,7 +67,7 @@ gcp/
 │   └── cloud-init.yaml.tpl      # Cloud-init template for VM initialization
 └── envs/                        # Environment-specific configurations
     ├── terraform.tfvars.example # Template for tfvars
-    ├── devtest/                 # Dev + Test environment (merged)
+    ├── dev/                     # Dev environment (multi-VPC example)
     │   ├── main.tf              # Provider and module configuration
     │   ├── variables.tf         # → symlink to ../../_shared/variables.tf
     │   ├── outputs.tf           # → symlink to ../../_shared/outputs.tf
@@ -81,17 +81,19 @@ gcp/
 
 ## Environments
 
-| Environment | Directory       | Description                                   |
-| ----------- | --------------- | --------------------------------------------- |
-| `devtest`   | `envs/devtest/` | Combined dev and test environment (multi-VPC) |
-| `prod`      | `envs/prod/`    | Production environment                        |
+| Environment | Directory       | Description                                  |
+| ----------- | --------------- | -------------------------------------------- |
+| `dev`       | `envs/dev/`     | Development environment (multi-VPC example)  |
+| `prod`      | `envs/prod/`    | Production environment                       |
+
+Replicate `envs/dev/` to `envs/test/`, `envs/uat/`, etc. for additional environments — each one is a self-contained directory with its own `main.tf`, `backend.hcl`, and symlinks to `_shared/`.
 
 ### Multi-VPC Support
 
-The `devtest` environment demonstrates multi-VPC management within a single Terraform configuration. This is useful when:
+The `dev` environment demonstrates multi-VPC management within a single Terraform configuration. This is useful when:
 
 - Multiple VPCs exist in the same GCP project
-- You want to manage dev and test resources together
+- You want to manage several isolated networks together
 - You need isolated networks with shared infrastructure code
 
 ---
@@ -518,7 +520,7 @@ runcmd:
 
 | Variable     | Type        | Description                                     |
 | ------------ | ----------- | ----------------------------------------------- |
-| `env`        | string      | Environment name: dev, test, devtest, uat, prod |
+| `env`        | string      | Environment name: dev, test, uat, prod          |
 | `labels`     | map(string) | Labels applied to all resources                 |
 | `project_id` | string      | GCP project ID                                  |
 | `region`     | string      | Default GCP region                              |
@@ -658,8 +660,8 @@ gcloud config get-value project
 ### Example Workflow
 
 ```bash
-# Working with DEVTEST environment
-cd gcp/envs/devtest
+# Working with DEV environment
+cd gcp/envs/dev
 gcloud config set project my-project-test
 terraform init -backend-config=backend.hcl
 terraform plan
@@ -685,7 +687,7 @@ The `terraform.tfvars` files are gitignored for security (they may contain sensi
 ┌─────────────────┐         ┌──────────────────────────────┐
 │  Local Machine  │ ◄─────► │  GCS Backend Bucket          │
 │                 │  sync   │                              │
-│  envs/devtest/  │         │  gs://bucket/gcp/devtest/    │
+│  envs/dev/      │         │  gs://bucket/gcp/dev/        │
 │  └─ terraform.  │         │  ├─ default.tfstate          │
 │     tfvars      │         │  └─ terraform.tfvars         │
 └─────────────────┘         └──────────────────────────────┘
@@ -703,7 +705,7 @@ cd gcp
 ./scripts/tfvars-sync.sh download
 
 # Download tfvars for specific environment
-./scripts/tfvars-sync.sh download devtest
+./scripts/tfvars-sync.sh download dev
 
 # Upload tfvars for all environments (after making changes)
 ./scripts/tfvars-sync.sh upload
@@ -729,7 +731,7 @@ gcloud auth application-default login
 ./scripts/tfvars-sync.sh download
 
 # 4. Initialize and verify
-cd envs/devtest
+cd envs/dev
 terraform init -backend-config=backend.hcl
 terraform plan  # Should show no changes
 ```
@@ -738,19 +740,19 @@ terraform plan  # Should show no changes
 
 ```bash
 # 1. Download latest tfvars (in case others made changes)
-./scripts/tfvars-sync.sh download devtest
+./scripts/tfvars-sync.sh download dev
 
 # 2. Make changes to terraform.tfvars
-vim envs/devtest/terraform.tfvars
+vim envs/dev/terraform.tfvars
 
 # 3. Preview and apply changes
-cd envs/devtest
+cd envs/dev
 terraform plan
 terraform apply
 
 # 4. Upload updated tfvars to GCS
 cd ../..
-./scripts/tfvars-sync.sh upload devtest
+./scripts/tfvars-sync.sh upload dev
 ```
 
 ### Important Notes
@@ -982,7 +984,7 @@ unset TF_LOG_PATH
 - Always run `terraform plan` before `apply`
 - Review plans carefully, especially for production
 - Use `-target` for surgical changes
-- Test changes in devtest before prod
+- Test changes in dev before prod
 
 ### 5. Lifecycle Management
 

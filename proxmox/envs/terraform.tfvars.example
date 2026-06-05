@@ -53,7 +53,7 @@ vms = [
     name      = "test-vm-01"
     node_name = "pve01"
     vm_id     = 9001
-    tags      = ["devtest", "terraform"]
+    tags      = ["dev", "terraform"]
 
     cpu_cores        = 2
     memory_dedicated = 2048

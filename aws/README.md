@@ -10,7 +10,7 @@ aws/
 │   └── network/       # VPC, subnets, IGW, NAT, route tables, security groups
 ├── _shared/           # Shared variable/output declarations (symlinked by envs)
 ├── envs/              # Environment configurations
-│   ├── devtest/       # Dev/test environment
+│   ├── dev/           # Dev environment (replicate to test/uat/prod as needed)
 │   └── terraform.tfvars.example
 ├── main.tf            # Root module — wires submodules together
 ├── variables.tf       # Full type definitions with validations
@@ -24,13 +24,13 @@ aws/
 
 2. **Root module** (`main.tf`) — Wires modules together. Contains cross-module reference resolution in `locals` when needed.
 
-3. **Environment configs** (`envs/{devtest,prod}/`) — Provider, backend, and root module call. `variables.tf` and `outputs.tf` are **symlinks** to `_shared/` — do not edit them in env dirs.
+3. **Environment configs** (`envs/<env>/`) — Provider, backend, and root module call. `variables.tf` and `outputs.tf` are **symlinks** to `_shared/` — do not edit them in env dirs. `envs/dev/` is the included example; copy it to `envs/test/`, `envs/prod/`, etc. as needed.
 
 ## Usage
 
 ```bash
 # Initialize (with S3 backend)
-cd aws/envs/devtest
+cd aws/envs/dev
 terraform init -backend-config=backend.hcl
 
 # Or initialize with local state (no backend)

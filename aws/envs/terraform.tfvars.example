@@ -2,7 +2,7 @@
 # Copy this file to your environment directory as terraform.tfvars
 # and update with your actual values.
 
-env = "devtest" # Environment name: devtest, prod
+env = "dev" # Environment name: dev, prod
 
 tags = {
   organization = "my-org" # Your organization name

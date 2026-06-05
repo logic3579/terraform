@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Common Commands
 
-All GCP Terraform operations run from environment directories (`gcp/envs/devtest/` or `gcp/envs/prod/`):
+All GCP Terraform operations run from environment directories (`gcp/envs/dev/` or `gcp/envs/prod/`):
 
 ```bash
 # Initialize (required once per environment)
-cd gcp/envs/devtest
+cd gcp/envs/dev
 terraform init -backend-config=backend.hcl
 
 # Plan and apply
@@ -23,15 +23,15 @@ terraform fmt -check -recursive
 
 # Sync tfvars with team via GCS
 ./gcp/scripts/tfvars-sync.sh download          # all envs
-./gcp/scripts/tfvars-sync.sh download devtest   # specific env
+./gcp/scripts/tfvars-sync.sh download dev       # specific env
 ./gcp/scripts/tfvars-sync.sh upload prod        # upload specific env
 ```
 
-AWS Terraform operations run from environment directories (`aws/envs/devtest/`):
+AWS Terraform operations run from environment directories (`aws/envs/dev/`):
 
 ```bash
 # Initialize (with S3 backend)
-cd aws/envs/devtest
+cd aws/envs/dev
 terraform init -backend-config=backend.hcl
 
 # Or initialize with local state (no backend)
@@ -48,11 +48,11 @@ terraform validate
 terraform fmt -check -recursive
 ```
 
-Proxmox VE Terraform operations run from environment directories (`proxmox/envs/devtest/`):
+Proxmox VE Terraform operations run from environment directories (`proxmox/envs/dev/`):
 
 ```bash
 # Initialize (local backend — no -backend-config needed)
-cd proxmox/envs/devtest
+cd proxmox/envs/dev
 terraform init
 
 # Plan and apply
@@ -60,14 +60,14 @@ terraform plan
 terraform apply
 ```
 
-OpenStack Terraform operations run from environment directories (`openstack/envs/devtest/`):
+OpenStack Terraform operations run from environment directories (`openstack/envs/dev/`):
 
 ```bash
 # State backend uses Swift's S3-compatible API; export EC2 creds first
 export AWS_ACCESS_KEY_ID=...
 export AWS_SECRET_ACCESS_KEY=...
 
-cd openstack/envs/devtest
+cd openstack/envs/dev
 terraform init -backend-config=backend.hcl
 
 # Plan and apply
@@ -85,7 +85,7 @@ Three-layer module architecture:
 
 2. **Reusable modules** (`gcp/modules/{compute,gke,iam,lb,nat,neg-lb,network,storage}/`) — Each module follows the standard `main.tf` + `variables.tf` + `outputs.tf` + `versions.tf` pattern. Resources are created with `for_each` over object maps derived from flat input lists.
 
-3. **Environment configs** (`gcp/envs/{devtest,prod}/`) — Each env has its own `main.tf` (provider + backend + root module call) and `backend.hcl` (GCS bucket/prefix). `variables.tf` and `outputs.tf` are **symlinks** to `gcp/_shared/` — do not edit them in env dirs.
+3. **Environment configs** (`gcp/envs/{dev,prod}/`) — Each env has its own `main.tf` (provider + backend + root module call) and `backend.hcl` (GCS bucket/prefix). `variables.tf` and `outputs.tf` are **symlinks** to `gcp/_shared/` — do not edit them in env dirs. `envs/dev/` is the included example; replicate it to `envs/test/`, `envs/uat/`, etc. as needed.
 
 #### GCP module details
 
@@ -108,7 +108,7 @@ Same three-layer architecture as GCP:
 
 2. **Reusable modules** (`aws/modules/network/`) — VPC, subnets, IGW, NAT GW + EIP, route tables, security groups, and SG rules. Uses `flatten()` + `for_each` with compound keys (`"vpc-name/subnet-name"`).
 
-3. **Environment configs** (`aws/envs/devtest/`) — Provider + S3 backend + root module call. `variables.tf` and `outputs.tf` are **symlinks** to `aws/_shared/` — do not edit them in env dirs.
+3. **Environment configs** (`aws/envs/dev/`) — Provider + S3 backend + root module call. `variables.tf` and `outputs.tf` are **symlinks** to `aws/_shared/` — do not edit them in env dirs. Copy `envs/dev/` to `envs/test/`, `envs/prod/`, etc. when adding environments.
 
 **Routing design**: One public route table per VPC (0.0.0.0/0 → IGW), one private route table per NAT gateway (0.0.0.0/0 → NAT GW), isolated subnets use VPC default route table.
 
@@ -124,7 +124,7 @@ Same three-layer architecture as GCP/AWS:
 
 2. **Reusable modules** (`proxmox/modules/{network,storage,compute}/`) — Standard `main.tf` + `variables.tf` + `outputs.tf` + `versions.tf` pattern. Resources use `for_each` over object maps; compute uses `dynamic` blocks for `disk`, `network_device`, and `initialization` (cloud-init).
 
-3. **Environment configs** (`proxmox/envs/devtest/`) — Provider + local backend + root module call. `variables.tf` and `outputs.tf` are **symlinks** to `proxmox/_shared/`.
+3. **Environment configs** (`proxmox/envs/dev/`) — Provider + local backend + root module call. `variables.tf` and `outputs.tf` are **symlinks** to `proxmox/_shared/`. Copy `envs/dev/` to `envs/test/`, `envs/prod/`, etc. when adding environments.
 
 #### Proxmox module details
 
@@ -146,7 +146,7 @@ Same three-layer architecture as GCP/AWS:
 
 2. **Reusable modules** (`openstack/modules/{network,storage,compute}/`) — Standard pattern. Network module flattens nested subnets, router interfaces, and SG rules with `flatten()` + compound keys.
 
-3. **Environment configs** (`openstack/envs/devtest/`) — Provider + S3 backend (pointed at Swift's S3-compatible API) + root module call. `variables.tf` / `outputs.tf` are **symlinks** to `openstack/_shared/`.
+3. **Environment configs** (`openstack/envs/dev/`) — Provider + S3 backend (pointed at Swift's S3-compatible API) + root module call. `variables.tf` / `outputs.tf` are **symlinks** to `openstack/_shared/`. Copy `envs/dev/` to `envs/test/`, `envs/prod/`, etc. when adding environments.
 
 #### OpenStack module details
 
@@ -171,7 +171,7 @@ Same three-layer architecture as GCP/AWS:
 
 ### State management
 
-- **GCP**: GCS backend per environment, configured via `backend.hcl` files. Same GCS bucket stores both state files and team-shared tfvars (via `tfvars-sync.sh`). State prefix pattern: `gcp/{env_name}` (e.g., `gcp/devtest`, `gcp/prod`).
+- **GCP**: GCS backend per environment, configured via `backend.hcl` files. Same GCS bucket stores both state files and team-shared tfvars (via `tfvars-sync.sh`). State prefix pattern: `gcp/{env_name}` (e.g., `gcp/dev`, `gcp/prod`).
 - **AWS**: S3 backend per environment, configured via `backend.hcl` files. State key pattern: `aws/{env_name}/terraform.tfstate`.
 - **Proxmox**: Local backend (`terraform.tfstate` in the env dir). Proxmox has no native Terraform backend — common alternatives for team use are an S3-compatible store like MinIO or the HTTP backend backed by GitLab/Gitea.
 - **OpenStack**: S3 backend pointed at Swift's S3-compatible API (the native `swift` backend was removed in Terraform 1.3). Generate Swift EC2 credentials with `openstack ec2 credentials create`, export them as `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`, then `terraform init -backend-config=backend.hcl`. State key pattern: `openstack/{env_name}/terraform.tfstate`.

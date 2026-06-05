@@ -1,2 +1,2 @@
 bucket = "myproject-data-bucket"
-prefix = "terraform/devtest"
+prefix = "terraform/dev"

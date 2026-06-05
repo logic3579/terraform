@@ -1,5 +1,5 @@
-# Devtest environment configuration
-# Provider, backend, and module wiring for the devtest env.
+# Dev environment configuration
+# Provider, backend, and module wiring for the dev env.
 
 terraform {
   required_version = "~> 1.5"

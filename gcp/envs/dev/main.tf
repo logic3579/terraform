@@ -1,4 +1,4 @@
-# Test environment configuration
+# Dev environment configuration
 # Provider and module configuration loaded from _shared
 
 terraform {
