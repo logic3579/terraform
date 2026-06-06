@@ -21,10 +21,12 @@ terraform validate
 # Format check
 terraform fmt -check -recursive
 
-# Sync tfvars with team via GCS
-./gcp/scripts/tfvars-sync.sh download          # all envs
-./gcp/scripts/tfvars-sync.sh download dev       # specific env
-./gcp/scripts/tfvars-sync.sh upload prod        # upload specific env
+# Sync tfvars with team — GCS / S3 / R2 (script auto-derives the remote URI from backend.hcl)
+./scripts/tfvars-sync.sh download --platform gcp --storage gcs              # all gcp envs
+./scripts/tfvars-sync.sh download --platform gcp --storage gcs --env dev    # one gcp env
+./scripts/tfvars-sync.sh upload   --platform gcp --storage gcs --env prod
+./scripts/tfvars-sync.sh upload   --platform aws --storage r2  --env logic3579
+./scripts/tfvars-sync.sh upload   --platform aws --storage s3  --env dev --dry-run
 ```
 
 AWS Terraform operations run from environment directories (`aws/envs/dev/`):
