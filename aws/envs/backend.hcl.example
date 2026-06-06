@@ -1,0 +1,37 @@
+# Terraform s3 backend pointed at Cloudflare R2 (S3-compatible).
+#
+# Copy this file to backend.hcl in your env directory (e.g.,
+# aws/envs/<env>/backend.hcl) and fill in the placeholders below.
+# Per-env backend.hcl files that embed R2 credentials should be gitignored —
+# add an entry under .gitignore (see aws/envs/logic3579/backend.hcl as
+# precedent).
+#
+# To create R2 API credentials:
+#   1. Cloudflare dashboard → R2 → Manage R2 API Tokens
+#   2. Create a token with "Object Read & Write" permission on your bucket
+#   3. Paste the access key / secret key below
+
+bucket = "<your-r2-bucket-name>"       # e.g. "my-terraform-state"
+key    = "aws/<env>/terraform.tfstate" # state object key
+region = "auto"                        # R2 doesn't use AWS regions; "auto" is required
+
+endpoints = {
+  s3 = "https://<CLOUDFLARE_ACCOUNT_ID>.r2.cloudflarestorage.com"
+}
+
+# Embed R2 S3 credentials here so they don't collide with the AWS provider's
+# AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY env vars (those point at your AWS account).
+access_key = "<R2_ACCESS_KEY_ID>"
+secret_key = "<R2_SECRET_ACCESS_KEY>"
+
+# R2 doesn't implement all AWS-isms — disable the corresponding checks.
+skip_credentials_validation = true
+skip_region_validation      = true
+skip_metadata_api_check     = true
+skip_requesting_account_id  = true
+skip_s3_checksum            = true
+use_path_style              = true
+
+# R2 has no DynamoDB-equivalent lock table. Terraform >= 1.10 supports native
+# S3 lockfile via S3 conditional writes (which R2 supports). Uncomment to opt in:
+# use_lockfile = true

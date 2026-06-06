@@ -10,33 +10,68 @@ module "network" {
 }
 
 # ============================================================
-# Compute (future)
+# IAM (EC2 instance profiles + Lambda execution roles)
 # ============================================================
 
-# module "compute" {
-#   source = "./modules/compute"
-# }
+module "iam" {
+  source = "./modules/iam"
+
+  ec2_instance_profiles  = var.ec2_instance_profiles
+  lambda_execution_roles = var.lambda_execution_roles
+  tags                   = var.tags
+}
 
 # ============================================================
-# IAM (future)
+# Compute (EC2)
 # ============================================================
 
-# module "iam" {
-#   source = "./modules/iam"
-# }
+module "compute" {
+  source = "./modules/compute"
+
+  instances = var.instances
+  key_pairs = var.key_pairs
+
+  subnet_ids_by_name         = { for k, v in module.network.subnets : k => v.id }
+  security_group_ids_by_name = { for k, v in module.network.security_groups : k => v.id }
+  iam_instance_profile_names = module.iam.ec2_instance_profile_names
+
+  tags = var.tags
+}
 
 # ============================================================
-# Storage (future)
+# RDS
 # ============================================================
 
-# module "storage" {
-#   source = "./modules/storage"
-# }
+module "rds" {
+  source = "./modules/rds"
+
+  rds_instances              = var.rds_instances
+  subnet_ids_by_name         = { for k, v in module.network.subnets : k => v.id }
+  security_group_ids_by_name = { for k, v in module.network.security_groups : k => v.id }
+
+  tags = var.tags
+}
 
 # ============================================================
-# Load Balancer (future)
+# Lambda
 # ============================================================
 
-# module "lb" {
-#   source = "./modules/lb"
-# }
+module "lambda" {
+  source = "./modules/lambda"
+
+  lambda_functions = var.lambda_functions
+  lambda_role_arns = module.iam.lambda_role_arns
+
+  tags = var.tags
+}
+
+# ============================================================
+# Budgets
+# ============================================================
+
+module "budget" {
+  source = "./modules/budget"
+
+  budgets = var.budgets
+  tags    = var.tags
+}

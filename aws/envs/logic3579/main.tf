@@ -1,4 +1,4 @@
-# Dev/Test environment configuration
+# logic3579 environment configuration
 # Provider and module configuration loaded from _shared
 
 terraform {
@@ -39,4 +39,21 @@ module "aws" {
 
   # Network resources
   vpcs = var.vpcs
+
+  # IAM resources
+  ec2_instance_profiles  = var.ec2_instance_profiles
+  lambda_execution_roles = var.lambda_execution_roles
+
+  # Compute resources
+  key_pairs = var.key_pairs
+  instances = var.instances
+
+  # RDS resources
+  rds_instances = var.rds_instances
+
+  # Lambda functions
+  lambda_functions = var.lambda_functions
+
+  # Budgets
+  budgets = var.budgets
 }

@@ -2,7 +2,13 @@
 # Copy this file to your environment directory as terraform.tfvars
 # and update with your actual values.
 
-env = "dev" # Environment name: dev, prod
+env    = "dev" # Environment name: dev, prod
+region = "us-east-1"
+
+# AWS named profile for provider auth. Required when using `aws sso login` /
+# AWS Identity Center, unless you `export AWS_PROFILE=<name>` in the shell first.
+# Leave commented out to use the default credential chain.
+# aws_profile = "default"
 
 tags = {
   organization = "my-org" # Your organization name
@@ -137,4 +143,119 @@ vpcs = [
   #     },
   #   ]
   # }
+]
+
+# ========================================
+# IAM: EC2 instance profiles + Lambda execution roles
+# ========================================
+# Each entry under ec2_instance_profiles creates one IAM role and one
+# instance profile of the same name, with the listed managed policies attached.
+# Reference the profile name from instances[*].iam_instance_profile.
+
+ec2_instance_profiles = [
+  # {
+  #   name = "ec2-ssm"
+  #   description = "EC2 instance profile with SSM Managed Instance Core"
+  #   managed_policy_arns = [
+  #     "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore",
+  #   ]
+  # },
+]
+
+lambda_execution_roles = [
+  # {
+  #   name = "lambda-basic-execution"
+  #   managed_policy_arns = [
+  #     "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+  #   ]
+  # },
+]
+
+# ========================================
+# EC2 / Compute
+# ========================================
+# `os` triggers an AMI lookup (debian-12, al2023, ubuntu-22). Or set `ami_id` directly.
+# `subnet_name` and `security_group_names` use network module keys: "vpc-name/subnet-name".
+
+key_pairs = [
+  # { name = "my-key", public_key = "ssh-ed25519 AAAA..." },
+]
+
+instances = [
+  # {
+  #   name                 = "app-1"
+  #   os                   = "debian-12"
+  #   instance_type        = "t3.micro"
+  #   subnet_name          = "main-vpc/public-1a"
+  #   security_group_names = ["main-vpc/web-sg"]
+  #   key_name             = "my-key"
+  #   iam_instance_profile = "ec2-ssm"
+  #   eip                  = true
+  #   root_volume = { size_gb = 30, type = "gp3" }
+  # },
+]
+
+# ========================================
+# RDS
+# ========================================
+# Master password is randomly generated and written to SSM Parameter Store at
+# `ssm_password_path` (default: /<name>/master_password). DB subnet group needs
+# subnets in at least 2 AZs.
+
+rds_instances = [
+  # {
+  #   name              = "appdb"
+  #   engine            = "postgres"  # postgres | mysql | mariadb
+  #   engine_version    = "16.4"
+  #   instance_class    = "db.t4g.micro"
+  #   allocated_storage = 20
+  #   db_name           = "app"
+  #   username          = "app"
+  #   subnet_names = [
+  #     "main-vpc/db-1a",
+  #     "main-vpc/db-1b",
+  #   ]
+  #   security_group_names = ["main-vpc/db-sg"]
+  #   publicly_accessible = false
+  #   skip_final_snapshot = true
+  # },
+]
+
+# ========================================
+# Lambda
+# ========================================
+# Source code is zipped from a local directory relative to the env dir.
+# Create envs/<env>/lambda-src/ with handler.py (or other runtime entrypoint).
+
+lambda_functions = [
+  # {
+  #   name       = "hello"
+  #   runtime    = "python3.12"
+  #   handler    = "handler.lambda_handler"
+  #   source_dir = "lambda-src"
+  #   role_name  = "lambda-basic-execution"
+  #   function_url = { enabled = true, auth_type = "AWS_IAM" }
+  # },
+]
+
+# ========================================
+# AWS Budgets
+# ========================================
+# `time_unit` supports DAILY / MONTHLY / QUARTERLY / ANNUALLY.
+# Subscribers get a one-time "Confirm subscription" email — click it before
+# notifications start firing.
+
+budgets = [
+  # {
+  #   name         = "daily-cost-alert"
+  #   limit_amount = "0.5"
+  #   time_unit    = "DAILY"
+  #   notifications = [
+  #     {
+  #       threshold                  = 100  # PERCENTAGE of limit_amount
+  #       notification_type          = "ACTUAL"
+  #       subscriber_email_addresses = ["you@example.com"]
+  #     },
+  #   ]
+  # },
 ]

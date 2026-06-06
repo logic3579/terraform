@@ -7,7 +7,7 @@ Terraform configurations for provisioning infrastructure on **GCP**, **AWS**, **
 ```
 .
 ├── gcp/         # Google Cloud Platform — production-ready (8 modules)
-├── aws/         # Amazon Web Services — network module complete
+├── aws/         # Amazon Web Services — 6 modules (network, iam, compute, rds, lambda, budget)
 ├── proxmox/     # Proxmox VE — basic VM/network/storage (bpg/proxmox)
 └── openstack/   # OpenStack — basic compute/network/storage (terraform-provider-openstack)
 ```
@@ -51,6 +51,11 @@ terraform plan
 terraform apply
 ```
 
+The `aws/envs/` directory also includes `backend.hcl.example` — a template for
+pointing the S3 backend at **Cloudflare R2** (any S3-compatible store works
+the same way). Per-env `backend.hcl` files that embed R2 credentials should
+be added to `.gitignore`.
+
 ### Proxmox VE
 
 ```bash
@@ -81,7 +86,7 @@ terraform apply
 | Platform   | Provider                                              | Modules                                                                 |
 |------------|-------------------------------------------------------|--------------------------------------------------------------------------|
 | GCP        | `hashicorp/google` + `hashicorp/google-beta` `~> 7.0` | network, nat, iam, storage, compute, lb, neg-lb, gke                    |
-| AWS        | `hashicorp/aws` `~> 5.0`                              | network (VPC, subnets, IGW, NAT GW, route tables, security groups)       |
+| AWS        | `hashicorp/aws` `~> 5.0`                              | network, iam, compute (EC2 + EIP + key pair), rds (with SSM SecureString), lambda (Function URL), budget |
 | Proxmox VE | `bpg/proxmox` `~> 0.104.0`                            | network (Linux bridges), storage (download_file), compute (KVM VMs)      |
 | OpenStack  | `terraform-provider-openstack/openstack` `~> 3.4`     | network (networks/subnets/routers/SGs/FIPs), compute (instances/keypairs), storage (Cinder volumes) |
 

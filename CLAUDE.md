@@ -100,21 +100,31 @@ Three-layer module architecture:
 | **neg-lb** | `data.google_compute_network_endpoint_group`, `google_compute_global_address`, `google_compute_health_check`, `google_compute_backend_service`, `google_compute_url_map`, `google_compute_target_http_proxy`, `google_compute_global_forwarding_rule`, `google_compute_managed_ssl_certificate`, `google_compute_target_https_proxy` | NEG-backed ALB for GKE Standalone NEGs, data source lookup of existing NEGs by name+zone, HTTP/TCP health checks, RATE or UTILIZATION balancing per endpoint, conditional SSL/HTTPS |
 | **gke** | `google_container_cluster`, `google_container_node_pool` | Autopilot and Standard modes, VPC-native networking, private cluster, master authorized networks, Dataplane V2, Cloud DNS, Gateway API, maintenance window, release channel, logging/monitoring with Managed Prometheus, addons (HTTP LB, HPA, PD CSI, GCS Fuse CSI, DNS cache, Config Connector, GKE Backup, Stateful HA), Workload Identity, security posture, node pool autoscaling/spot/GPU/taints, uses `google-beta` provider |
 
-### AWS (modular, network module complete)
+### AWS (modular, 6 modules)
 
 Same three-layer architecture as GCP:
 
-1. **Root module** (`aws/main.tf`) — Calls the network module, with placeholders for future modules (compute, iam, storage, lb).
+1. **Root module** (`aws/main.tf`) — Wires 6 submodules together (network, iam, compute, rds, lambda, budget). Threads `module.network` subnet/SG ID maps into `compute` / `rds`, and `module.iam` instance-profile / role ARN maps into `compute` / `lambda`.
 
-2. **Reusable modules** (`aws/modules/network/`) — VPC, subnets, IGW, NAT GW + EIP, route tables, security groups, and SG rules. Uses `flatten()` + `for_each` with compound keys (`"vpc-name/subnet-name"`).
+2. **Reusable modules** (`aws/modules/{network,iam,compute,rds,lambda,budget}/`) — Each follows the standard `main.tf` + `variables.tf` + `outputs.tf` + `versions.tf` pattern. Resources are created with `for_each` over object maps; nested inputs flatten via `locals` with compound keys.
 
-3. **Environment configs** (`aws/envs/dev/`) — Provider + S3 backend + root module call. `variables.tf` and `outputs.tf` are **symlinks** to `aws/_shared/` — do not edit them in env dirs. Copy `envs/dev/` to `envs/test/`, `envs/prod/`, etc. when adding environments.
+3. **Environment configs** (`aws/envs/{dev,logic3579}/`) — Provider + S3 backend + root module call. `variables.tf` and `outputs.tf` are **symlinks** to `aws/_shared/` — do not edit them in env dirs.
+   - `envs/dev/` uses an S3 backend (placeholder bucket).
+   - `envs/logic3579/` uses an **S3 backend pointed at Cloudflare R2** via `endpoints.s3` + skip flags; its `backend.hcl` embeds R2 credentials directly (gitignored — see `.gitignore`). The reusable template lives at `aws/envs/backend.hcl.example`.
+   - The AWS provider's `region` and `profile` are sourced from `var.region` / `var.aws_profile`. For SSO users on AWS CLI ≥ 2.27 (new `aws login` command writing to `~/.aws/login/`), the Go SDK can't read that cache directly — bridge it via a `[profile terraform]` in `~/.aws/config` with `credential_process = aws configure export-credentials --profile default --format process`, then set `aws_profile = "terraform"` in tfvars.
 
 **Routing design**: One public route table per VPC (0.0.0.0/0 → IGW), one private route table per NAT gateway (0.0.0.0/0 → NAT GW), isolated subnets use VPC default route table.
 
-#### AWS network module resources
+#### AWS module details
 
-`aws_vpc` (DNS support + hostnames), `aws_subnet`, `aws_internet_gateway` (conditional on public subnets), `aws_eip` + `aws_nat_gateway`, `aws_route_table` + `aws_route` + `aws_route_table_association` (public/private/isolated), `aws_security_group` + `aws_vpc_security_group_ingress_rule` / `aws_vpc_security_group_egress_rule`.
+| Module | Resources | Key features |
+|--------|-----------|--------------|
+| **network** | `aws_vpc`, `aws_subnet`, `aws_internet_gateway`, `aws_eip` + `aws_nat_gateway`, `aws_route_table` + `aws_route` + `aws_route_table_association`, `aws_security_group` + `aws_vpc_security_group_ingress_rule` / `_egress_rule` | Public / private (with NAT) / isolated subnet routing. SG rules auto-null `from_port`/`to_port` when `protocol = "-1"` (AWS rejects the combination). **Limitation**: SG ingress/egress rule resources only honor `cidr_blocks[0]` — split per CIDR for full coverage. |
+| **iam** | `aws_iam_role`, `aws_iam_instance_profile`, `aws_iam_role_policy_attachment` | One role + one instance profile per `ec2_instance_profiles` entry (same name). Lambda execution roles created separately. Outputs `ec2_instance_profile_names` and `lambda_role_arns` maps for root wiring. |
+| **compute** | `aws_key_pair`, `aws_instance`, `aws_eip`, `data.aws_ami` | AMI lookup presets (`debian-12`, `al2023`, `ubuntu-22`) — set `os` or `ami_id`. IMDSv2 required by default. Optional Elastic IP per instance. `iam_instance_profile` resolves via the iam-module-supplied map. `user_data` ignored on in-place changes. |
+| **rds** | `random_password`, `aws_ssm_parameter` (SecureString), `aws_db_subnet_group`, `aws_db_instance` | Master password is randomly generated and written to SSM Parameter Store at `ssm_password_path` (default `/<name>/master_password`). DB subnet group requires `subnet_names` in ≥2 AZs. `engine_version` is ignored on changes so AWS-side minor upgrades don't trigger replacement. |
+| **lambda** | `data.archive_file`, `aws_lambda_function`, `aws_lambda_function_url` | Source is zipped from `${path.root}/<source_dir>` (relative to env dir). Function URL optional, auth `NONE` or `AWS_IAM`. Role resolved via the iam-module-supplied map. Uses the `hashicorp/archive` provider. |
+| **budget** | `aws_budgets_budget` | Supports `time_unit` DAILY / MONTHLY / QUARTERLY / ANNUALLY and multiple email notifications per budget (PERCENTAGE or ABSOLUTE_VALUE thresholds). |
 
 ### Proxmox VE (basic, extensible)
 
@@ -172,13 +182,13 @@ Same three-layer architecture as GCP/AWS:
 ### State management
 
 - **GCP**: GCS backend per environment, configured via `backend.hcl` files. Same GCS bucket stores both state files and team-shared tfvars (via `tfvars-sync.sh`). State prefix pattern: `gcp/{env_name}` (e.g., `gcp/dev`, `gcp/prod`).
-- **AWS**: S3 backend per environment, configured via `backend.hcl` files. State key pattern: `aws/{env_name}/terraform.tfstate`.
+- **AWS**: S3 backend per environment, configured via `backend.hcl` files. State key pattern: `aws/{env_name}/terraform.tfstate`. Backend can point at any S3-compatible store via `endpoints.s3` — `envs/logic3579/` uses **Cloudflare R2** (skip flags + `use_path_style = true`; R2 credentials embedded in the gitignored `backend.hcl` to avoid colliding with the AWS provider's `AWS_ACCESS_KEY_ID`/`_SECRET_ACCESS_KEY` env vars). No DynamoDB locking on R2; Terraform 1.10+ native S3 lockfile (`use_lockfile = true`) is the alternative.
 - **Proxmox**: Local backend (`terraform.tfstate` in the env dir). Proxmox has no native Terraform backend — common alternatives for team use are an S3-compatible store like MinIO or the HTTP backend backed by GitLab/Gitea.
 - **OpenStack**: S3 backend pointed at Swift's S3-compatible API (the native `swift` backend was removed in Terraform 1.3). Generate Swift EC2 credentials with `openstack ec2 credentials create`, export them as `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`, then `terraform init -backend-config=backend.hcl`. State key pattern: `openstack/{env_name}/terraform.tfstate`.
 
 ### What's gitignored
 
-`*.tfvars`, `*.tfstate`, `*.json` (except tfvars.json), `**/keys/`, `.terraform/`. Use `gcp/envs/terraform.tfvars.example`, `aws/envs/terraform.tfvars.example`, `proxmox/envs/terraform.tfvars.example`, and `openstack/envs/terraform.tfvars.example` as the reference templates for tfvars.
+`*.tfvars`, `*.tfstate`, `*.json` (except tfvars.json), `**/keys/`, `.terraform/`. Per-env `backend.hcl` files that embed credentials are gitignored on a path-by-path basis (e.g., `aws/envs/logic3579/backend.hcl`). Use `gcp/envs/terraform.tfvars.example`, `aws/envs/terraform.tfvars.example`, `aws/envs/backend.hcl.example`, `proxmox/envs/terraform.tfvars.example`, and `openstack/envs/terraform.tfvars.example` as the reference templates.
 
 ## Provider versions
 
