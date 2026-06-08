@@ -1,0 +1,97 @@
+# Vultr environment configuration
+# Copy this file to envs/<env>/terraform.tfvars and update values.
+
+# ========================================
+# Provider authentication
+# ========================================
+# Generate / view at https://my.vultr.com/settings/#settingsapi
+#
+# Preferred: `export VULTR_API_KEY=...` in your shell and leave api_key unset
+# here. If you set it below, that value WILL OVERRIDE the env var — do not
+# leave a placeholder string.
+# api_key = "REPLACE_ME"
+
+# Optional tuning
+# rate_limit  = 500  # ms between API calls; Vultr caps at 30/s
+# retry_limit = 3    # retries on failed calls
+
+# ========================================
+# Network — VPCs
+# ========================================
+# Region IDs: https://www.vultr.com/api/#operation/list-regions  (e.g. ewr, sea, nrt, sgp, ams, lhr, fra)
+vpcs = [
+  {
+    name           = "default"
+    region         = "nrt"
+    description    = "logic3579 default VPC"
+    v4_subnet      = "10.20.0.0"
+    v4_subnet_mask = 24
+  },
+]
+
+# ========================================
+# Network — Firewall groups + rules
+# ========================================
+firewall_groups = [
+  {
+    name        = "web"
+    description = "Allow SSH from anywhere, HTTP/HTTPS public"
+    rules = [
+      # SSH (tighten subnet to your IP in real use)
+      { protocol = "tcp", ip_type = "v4", subnet = "0.0.0.0", subnet_size = 0, port = "22", notes = "ssh" },
+      # HTTP
+      { protocol = "tcp", ip_type = "v4", subnet = "0.0.0.0", subnet_size = 0, port = "80", notes = "http" },
+      # HTTPS
+      { protocol = "tcp", ip_type = "v4", subnet = "0.0.0.0", subnet_size = 0, port = "443", notes = "https" },
+      # ICMP
+      { protocol = "icmp", ip_type = "v4", subnet = "0.0.0.0", subnet_size = 0, notes = "ping" },
+    ]
+  },
+]
+
+# ========================================
+# Compute — SSH keys
+# ========================================
+ssh_keys = [
+  # {
+  #   name    = "logic"
+  #   ssh_key = "ssh-ed25519 AAAA... user@host"
+  # },
+]
+
+# ========================================
+# Compute — Startup scripts (base64-encoded body)
+# ========================================
+startup_scripts = [
+  # {
+  #   name   = "echo-path"
+  #   script = base64encode("#!/bin/sh\necho $PATH\n")
+  #   type   = "boot"
+  # },
+]
+
+# ========================================
+# Compute — Instances
+# ========================================
+# Plan IDs:  https://www.vultr.com/api/#tag/plans  (e.g. vc2-1c-1gb, vc2-1c-2gb, vhf-1c-1gb)
+# OS IDs:    https://www.vultr.com/api/#operation/list-os  (2284 = Ubuntu 24.04 LTS, 2104 = Debian 12, etc.)
+instances = [
+  {
+    name     = "web-01"
+    region   = "nrt"
+    plan     = "vc2-1c-1gb"
+    os_id    = 2284
+    hostname = "web-01"
+    label    = "web-01"
+    tags     = ["logic3579", "web"]
+
+    enable_ipv6     = true
+    ddos_protection = false
+    backups         = "disabled"
+
+    # ssh_key_names       = ["logic"]
+    # startup_script_name = "echo-path"
+    firewall_group_name = "web"
+    vpc_names           = ["default"]
+  },
+]

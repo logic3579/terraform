@@ -1,12 +1,14 @@
 #!/bin/bash
-# Sync terraform.tfvars between an env directory and remote object storage.
+# Sync env files between an env directory and S3-compatible object storage
+# (AWS S3 or Cloudflare R2). GCS support has been removed.
 #
-# Picks the right storage backend (GCS / S3 / Cloudflare R2) based on flags,
-# and derives the remote URI from the env's backend.hcl:
-#   gcs : gs://<bucket>/<prefix>/terraform.tfvars
-#   s3  : s3://<bucket>/<dirname(key)>/terraform.tfvars  (default AWS creds)
-#   r2  : s3://<bucket>/<dirname(key)>/terraform.tfvars  with --endpoint-url +
-#         access_key/secret_key sourced from backend.hcl
+# Remote object key is fixed by convention:
+#   s3://<bucket>/<platform>/<env>/<file>
+#
+# Credentials come from env vars (S3_ACCESS_KEY / S3_SECRET_ACCESS_KEY):
+#   --storage r2 : required
+#   --storage s3 : optional — falls back to the AWS default credential chain
+#                  (AWS_PROFILE / AWS_ACCESS_KEY_ID / IMDS) when unset
 
 set -euo pipefail
 
@@ -18,6 +20,9 @@ ACTION=""
 PLATFORM=""
 ENV=""
 STORAGE=""
+FILE="terraform.tfvars"
+BUCKET="terraform-state"
+ENDPOINT=""
 DRY_RUN=false
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,22 +31,44 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 # ---- usage ---------------------------------------------------------------
 usage() {
   cat <<EOF
-Usage: $(basename "$0") <upload|download> --platform <name> --storage <name> [--env <name>] [--dry-run]
+Usage: $(basename "$0") <upload|download> --platform NAME --storage <s3|r2> [options]
 
-Arguments:
+Required:
   upload | download              direction
-  --platform NAME                aws | gcp | proxmox | openstack
-  --storage  NAME                gcs | s3 | r2
+  --platform NAME                aws | gcp | proxmox | openstack | vultr
+  --storage  NAME                s3 | r2
+
+Options:
   --env      NAME                specific env (e.g. dev, logic3579); omit for all envs of the platform
+  --file     FILE                filename inside the env dir to sync (default: terraform.tfvars)
+                                 e.g. terraform.tfstate, terraform.tfvars.json
+  --bucket   NAME                bucket name (default: terraform-state)
+  --endpoint URL                 S3 endpoint URL. Required for --storage r2; optional for --storage s3.
+                                 e.g. https://<account>.r2.cloudflarestorage.com
   --dry-run                      print the planned cp command(s) without executing
   -h, --help                     show this help
 
-Examples:
-  # Download all gcp envs from GCS
-  $(basename "$0") download --platform gcp --storage gcs
+Remote object key (always):
+  s3://<bucket>/<platform>/<env>/<file>
 
-  # Upload one aws env to Cloudflare R2 (creds read from its backend.hcl)
-  $(basename "$0") upload --platform aws --storage r2 --env logic3579
+Credentials (env vars, never CLI flags):
+  S3_ACCESS_KEY         r2: required.  s3: optional (falls back to AWS default chain)
+  S3_SECRET_ACCESS_KEY  r2: required.  s3: optional (falls back to AWS default chain)
+
+Examples:
+  # Back up vultr local state + tfvars to R2
+  export S3_ACCESS_KEY=...   S3_SECRET_ACCESS_KEY=...
+  $(basename "$0") upload --platform vultr --env logic3579 --storage r2 \\
+      --file terraform.tfstate --endpoint https://<account>.r2.cloudflarestorage.com
+  $(basename "$0") upload --platform vultr --env logic3579 --storage r2 \\
+      --file terraform.tfvars  --endpoint https://<account>.r2.cloudflarestorage.com
+
+  # Upload one aws env tfvars to AWS S3 (uses AWS default credential chain)
+  $(basename "$0") upload --platform aws --storage s3 --env dev --bucket my-tfstate
+
+  # Download all proxmox envs from R2
+  $(basename "$0") download --platform proxmox --storage r2 \\
+      --endpoint https://<account>.r2.cloudflarestorage.com
 
   # Preview without executing
   $(basename "$0") upload --platform aws --storage s3 --env dev --dry-run
@@ -59,6 +86,9 @@ parse_args() {
       --platform) PLATFORM="${2:-}"; shift 2 ;;
       --env)      ENV="${2:-}";      shift 2 ;;
       --storage)  STORAGE="${2:-}";  shift 2 ;;
+      --file)     FILE="${2:-}";     shift 2 ;;
+      --bucket)   BUCKET="${2:-}";   shift 2 ;;
+      --endpoint) ENDPOINT="${2:-}"; shift 2 ;;
       --dry-run)  DRY_RUN=true;      shift ;;
       -h|--help)  usage ;;
       *)
@@ -70,6 +100,16 @@ parse_args() {
 
   if [[ ! "$ACTION" =~ ^(upload|download)$ ]]; then
     echo -e "${RED}[ERROR]${NC} action must be 'upload' or 'download' (got: '$ACTION')"
+    usage
+  fi
+
+  if [[ -z "$FILE" ]]; then
+    echo -e "${RED}[ERROR]${NC} --file must not be empty"
+    usage
+  fi
+
+  if [[ -z "$BUCKET" ]]; then
+    echo -e "${RED}[ERROR]${NC} --bucket must not be empty"
     usage
   fi
 
@@ -88,98 +128,67 @@ parse_args() {
     usage
   fi
 
-  if [[ ! "$STORAGE" =~ ^(gcs|s3|r2)$ ]]; then
-    echo -e "${RED}[ERROR]${NC} --storage must be one of: gcs, s3, r2 (got: '$STORAGE')"
+  if [[ ! "$STORAGE" =~ ^(s3|r2)$ ]]; then
+    echo -e "${RED}[ERROR]${NC} --storage must be one of: s3, r2 (got: '$STORAGE')"
+    usage
+  fi
+
+  if [[ "$STORAGE" == "r2" && -z "$ENDPOINT" ]]; then
+    echo -e "${RED}[ERROR]${NC} --endpoint is required when --storage r2"
     usage
   fi
 }
 
-# ---- backend.hcl parsing -------------------------------------------------
-# Top-level key = "value"
-get_backend_value() {
-  local file="$1" key="$2"
-  grep -E "^[[:space:]]*${key}[[:space:]]*=[[:space:]]*\"" "$file" 2>/dev/null \
-    | head -1 \
-    | sed -E 's/^[^"]*"([^"]*)".*$/\1/'
-}
-
-# endpoints.s3 (handles both inline { s3 = "..." } and multi-line block form)
-get_endpoint_s3() {
-  local file="$1"
-  awk '
-    /endpoints[[:space:]]*=/        { in_block=1 }
-    in_block && /s3[[:space:]]*=[[:space:]]*"/ {
-      sub(/^[^"]*"/, "")
-      sub(/".*/, "")
-      print
-      exit
-    }
-    in_block && /}/                 { in_block=0 }
-  ' "$file"
-}
-
 # ---- remote URI ---------------------------------------------------------
 compute_remote_uri() {
-  local backend_file="$1" storage="$2"
-  local bucket key prefix tfvars_key
-
-  bucket=$(get_backend_value "$backend_file" "bucket")
-  [[ -n "$bucket" ]] || return 1
-
-  case "$storage" in
-    gcs)
-      prefix=$(get_backend_value "$backend_file" "prefix")
-      [[ -n "$prefix" ]] || return 1
-      echo "gs://${bucket}/${prefix}/terraform.tfvars"
-      ;;
-    s3|r2)
-      key=$(get_backend_value "$backend_file" "key")
-      [[ -n "$key" ]] || return 1
-      tfvars_key="$(dirname "$key")/terraform.tfvars"
-      echo "s3://${bucket}/${tfvars_key}"
-      ;;
-  esac
+  local env="$1" filename="$2"
+  echo "s3://${BUCKET}/${PLATFORM}/${env}/${filename}"
 }
 
 # ---- cp runner ----------------------------------------------------------
 run_cp() {
-  local backend_file="$1" src="$2" dst="$3" storage="$4"
+  local src="$1" dst="$2"
+  local endpoint_arg=() region_arg=()
 
-  case "$storage" in
-    gcs)
-      if $DRY_RUN; then
-        echo -e "  ${CYAN}[DRY-RUN]${NC} gcloud storage cp \"$src\" \"$dst\""
-      else
-        gcloud storage cp "$src" "$dst"
-      fi
-      ;;
-    s3)
-      if $DRY_RUN; then
-        echo -e "  ${CYAN}[DRY-RUN]${NC} aws s3 cp \"$src\" \"$dst\""
-      else
-        aws s3 cp "$src" "$dst"
-      fi
-      ;;
+  [[ -n "$ENDPOINT" ]] && endpoint_arg=(--endpoint-url="$ENDPOINT")
+
+  case "$STORAGE" in
     r2)
-      local endpoint access_key secret_key
-      endpoint=$(get_endpoint_s3 "$backend_file")
-      access_key=$(get_backend_value "$backend_file" "access_key")
-      secret_key=$(get_backend_value "$backend_file" "secret_key")
+      # R2 only accepts canonical region names (wnam/enam/weur/eeur/apac/oc/auto).
+      # Force --region auto so the local AWS profile's region doesn't leak through.
+      region_arg=(--region auto)
 
-      if [[ -z "$endpoint" || -z "$access_key" || -z "$secret_key" ]]; then
-        echo -e "  ${RED}[ERROR]${NC} R2 backend.hcl missing endpoints.s3 / access_key / secret_key"
+      if [[ -z "${S3_ACCESS_KEY:-}" || -z "${S3_SECRET_ACCESS_KEY:-}" ]]; then
+        echo -e "  ${RED}[ERROR]${NC} S3_ACCESS_KEY and S3_SECRET_ACCESS_KEY env vars are required for --storage r2"
         return 1
       fi
 
-      # R2 only accepts region names: wnam | enam | weur | eeur | apac | oc | auto.
-      # Pass --region auto explicitly so the local AWS profile's region (e.g. ap-southeast-1)
-      # doesn't leak through and get rejected by the R2 API.
       if $DRY_RUN; then
-        echo -e "  ${CYAN}[DRY-RUN]${NC} AWS_ACCESS_KEY_ID=${access_key:0:6}… AWS_SECRET_ACCESS_KEY=… \\"
-        echo -e "                aws s3 cp --region auto --endpoint-url=\"$endpoint\" \"$src\" \"$dst\""
+        echo -e "  ${CYAN}[DRY-RUN]${NC} AWS_ACCESS_KEY_ID=${S3_ACCESS_KEY:0:6}… AWS_SECRET_ACCESS_KEY=… \\"
+        echo -e "                aws s3 cp ${region_arg[*]} ${endpoint_arg[*]} \"$src\" \"$dst\""
       else
-        AWS_ACCESS_KEY_ID="$access_key" AWS_SECRET_ACCESS_KEY="$secret_key" \
-          aws s3 cp --region auto --endpoint-url="$endpoint" "$src" "$dst"
+        AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY" AWS_SECRET_ACCESS_KEY="$S3_SECRET_ACCESS_KEY" \
+          aws s3 cp "${region_arg[@]}" "${endpoint_arg[@]}" "$src" "$dst"
+      fi
+      ;;
+
+    s3)
+      # If S3_ACCESS_KEY/SECRET are set, use them; otherwise fall back to the
+      # AWS default credential chain (AWS_PROFILE, ~/.aws/credentials, IMDS, etc).
+      if [[ -n "${S3_ACCESS_KEY:-}" && -n "${S3_SECRET_ACCESS_KEY:-}" ]]; then
+        if $DRY_RUN; then
+          echo -e "  ${CYAN}[DRY-RUN]${NC} AWS_ACCESS_KEY_ID=${S3_ACCESS_KEY:0:6}… AWS_SECRET_ACCESS_KEY=… \\"
+          echo -e "                aws s3 cp ${endpoint_arg[*]:-} \"$src\" \"$dst\""
+        else
+          AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY" AWS_SECRET_ACCESS_KEY="$S3_SECRET_ACCESS_KEY" \
+            aws s3 cp "${endpoint_arg[@]}" "$src" "$dst"
+        fi
+      else
+        if $DRY_RUN; then
+          echo -e "  ${CYAN}[DRY-RUN]${NC} aws s3 cp ${endpoint_arg[*]:-} \"$src\" \"$dst\""
+        else
+          aws s3 cp "${endpoint_arg[@]}" "$src" "$dst"
+        fi
       fi
       ;;
   esac
@@ -189,32 +198,22 @@ run_cp() {
 process_env() {
   local env="$1"
   local env_dir="$PROJECT_ROOT/$PLATFORM/envs/$env"
-  local backend_file="$env_dir/backend.hcl"
-  local tfvars_file="$env_dir/terraform.tfvars"
-  local rel_tfvars="$PLATFORM/envs/$env/terraform.tfvars"
-
-  if [[ ! -f "$backend_file" ]]; then
-    echo -e "${RED}[ERROR]${NC} $env: no backend.hcl at $backend_file"
-    return 1
-  fi
+  local local_file="$env_dir/$FILE"
+  local rel_local="$PLATFORM/envs/$env/$FILE"
 
   local remote_uri
-  remote_uri=$(compute_remote_uri "$backend_file" "$STORAGE") || true
-  if [[ -z "$remote_uri" ]]; then
-    echo -e "${RED}[ERROR]${NC} $env: could not derive remote URI from backend.hcl (storage=$STORAGE)"
-    return 1
-  fi
+  remote_uri=$(compute_remote_uri "$env" "$FILE")
 
   if [[ "$ACTION" == "upload" ]]; then
-    if [[ ! -f "$tfvars_file" ]]; then
-      echo -e "${YELLOW}[SKIP]${NC} $env: no terraform.tfvars to upload"
+    if [[ ! -f "$local_file" ]]; then
+      echo -e "${YELLOW}[SKIP]${NC} $env: no $FILE to upload"
       return 0
     fi
-    echo -e "${GREEN}[UPLOAD]${NC} $env: $rel_tfvars → $remote_uri"
-    run_cp "$backend_file" "$tfvars_file" "$remote_uri" "$STORAGE"
+    echo -e "${GREEN}[UPLOAD]${NC} $env: $rel_local → $remote_uri"
+    run_cp "$local_file" "$remote_uri"
   else
-    echo -e "${GREEN}[DOWNLOAD]${NC} $env: $remote_uri → $rel_tfvars"
-    run_cp "$backend_file" "$remote_uri" "$tfvars_file" "$STORAGE"
+    echo -e "${GREEN}[DOWNLOAD]${NC} $env: $remote_uri → $rel_local"
+    run_cp "$remote_uri" "$local_file"
   fi
 }
 
@@ -256,7 +255,7 @@ main() {
   $DRY_RUN && dry_marker=" ${CYAN}[DRY-RUN]${NC}"
 
   echo "==================================================="
-  echo -e "tfvars sync — ${action_upper}  ${PLATFORM} ⇄ ${STORAGE}${dry_marker}"
+  echo -e "tfvars sync — ${action_upper}  ${PLATFORM} ⇄ ${STORAGE}  bucket=${BUCKET}  file=${FILE}${dry_marker}"
   echo "==================================================="
   echo
 

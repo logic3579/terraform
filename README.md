@@ -1,6 +1,6 @@
 # Terraform Infrastructure as Code
 
-Terraform configurations for provisioning infrastructure on **GCP**, **AWS**, **Proxmox VE**, and **OpenStack**.
+Terraform configurations for provisioning infrastructure on **GCP**, **AWS**, **Proxmox VE**, **OpenStack**, and **Vultr**.
 
 ## Structure
 
@@ -9,7 +9,8 @@ Terraform configurations for provisioning infrastructure on **GCP**, **AWS**, **
 ├── gcp/         # Google Cloud Platform — production-ready (8 modules)
 ├── aws/         # Amazon Web Services — 6 modules (network, iam, compute, rds, lambda, budget)
 ├── proxmox/     # Proxmox VE — basic VM/network/storage (bpg/proxmox)
-└── openstack/   # OpenStack — basic compute/network/storage (terraform-provider-openstack)
+├── openstack/   # OpenStack — basic compute/network/storage (terraform-provider-openstack)
+└── vultr/       # Vultr — VPC + firewall groups + compute instances (vultr/vultr)
 ```
 
 Each platform follows the same three-layer architecture:
@@ -26,6 +27,7 @@ Each platform follows the same three-layer architecture:
    - **AWS**: [provider auth](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/)
    - **Proxmox**: API token (`Datacenter → Permissions → API Tokens`) or username/password
    - **OpenStack**: Keystone v3 credentials; for state backend, also Swift EC2 creds (`openstack ec2 credentials create`)
+   - **Vultr**: API key — generate at https://my.vultr.com/settings/#settingsapi, then `export VULTR_API_KEY=...`
 
 ## Usage
 
@@ -81,6 +83,20 @@ terraform plan
 terraform apply
 ```
 
+### Vultr
+
+```bash
+export VULTR_API_KEY=...                          # provider reads this env var natively
+cd vultr/envs/logic3579
+cp ../terraform.tfvars.example terraform.tfvars   # then edit
+terraform init                                    # local backend
+terraform plan
+terraform apply
+```
+
+State is kept local. To back up `terraform.tfstate` (and `terraform.tfvars`) to
+S3/R2, use `scripts/tfvars-sync.sh` with `--file terraform.tfstate`.
+
 ## Resources covered
 
 | Platform   | Provider                                              | Modules                                                                 |
@@ -89,6 +105,7 @@ terraform apply
 | AWS        | `hashicorp/aws` `~> 5.0`                              | network, iam, compute (EC2 + EIP + key pair), rds (with SSM SecureString), lambda (Function URL), budget |
 | Proxmox VE | `bpg/proxmox` `~> 0.104.0`                            | network (Linux bridges), storage (download_file), compute (KVM VMs)      |
 | OpenStack  | `terraform-provider-openstack/openstack` `~> 3.4`     | network (networks/subnets/routers/SGs/FIPs), compute (instances/keypairs), storage (Cinder volumes) |
+| Vultr      | `vultr/vultr` `~> 2.31`                               | network (VPC + firewall groups/rules), compute (instances + SSH keys + startup scripts) |
 
 ## Clean up
 

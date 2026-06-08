@@ -21,12 +21,23 @@ terraform validate
 # Format check
 terraform fmt -check -recursive
 
-# Sync tfvars with team — GCS / S3 / R2 (script auto-derives the remote URI from backend.hcl)
-./scripts/tfvars-sync.sh download --platform gcp --storage gcs              # all gcp envs
-./scripts/tfvars-sync.sh download --platform gcp --storage gcs --env dev    # one gcp env
-./scripts/tfvars-sync.sh upload   --platform gcp --storage gcs --env prod
-./scripts/tfvars-sync.sh upload   --platform aws --storage r2  --env logic3579
-./scripts/tfvars-sync.sh upload   --platform aws --storage s3  --env dev --dry-run
+# Sync env files with team — S3 / R2 only (object key = s3://<bucket>/<platform>/<env>/<file>)
+# Credentials always via env vars: S3_ACCESS_KEY / S3_SECRET_ACCESS_KEY
+#   - r2: required
+#   - s3: optional (falls back to AWS default credential chain when unset)
+export S3_ACCESS_KEY=... S3_SECRET_ACCESS_KEY=...
+
+# Defaults: --bucket terraform-state, --file terraform.tfvars
+./scripts/tfvars-sync.sh upload   --platform aws --storage s3 --env dev               # all aws envs use AWS chain
+./scripts/tfvars-sync.sh upload   --platform aws --storage r2 --env logic3579 \
+    --endpoint https://<account>.r2.cloudflarestorage.com
+./scripts/tfvars-sync.sh download --platform proxmox --storage r2 \
+    --endpoint https://<account>.r2.cloudflarestorage.com
+
+# --file picks the file inside the env dir. Use this to also back up
+# terraform.tfstate for envs that keep state local (e.g. vultr).
+./scripts/tfvars-sync.sh upload --platform vultr --env logic3579 --storage r2 \
+    --file terraform.tfstate --endpoint https://<account>.r2.cloudflarestorage.com
 ```
 
 AWS Terraform operations run from environment directories (`aws/envs/dev/`):
@@ -75,6 +86,26 @@ terraform init -backend-config=backend.hcl
 # Plan and apply
 terraform plan
 terraform apply
+```
+
+Vultr Terraform operations run from environment directories (`vultr/envs/logic3579/`):
+
+```bash
+# Provider reads VULTR_API_KEY natively; do not set api_key in tfvars to a
+# placeholder, as that would override the env-var fallback.
+export VULTR_API_KEY=...
+
+cd vultr/envs/logic3579
+terraform init                                    # local backend
+terraform plan
+terraform apply
+
+# Back up the local state + tfvars to remote storage
+export S3_ACCESS_KEY=... S3_SECRET_ACCESS_KEY=...
+../../../scripts/tfvars-sync.sh upload --platform vultr --env logic3579 --storage r2 \
+    --file terraform.tfstate --endpoint https://<account>.r2.cloudflarestorage.com
+../../../scripts/tfvars-sync.sh upload --platform vultr --env logic3579 --storage r2 \
+    --file terraform.tfvars  --endpoint https://<account>.r2.cloudflarestorage.com
 ```
 
 ## Architecture
@@ -170,7 +201,26 @@ Same three-layer architecture as GCP/AWS:
 
 **Provider auth**: Keystone v3 (separate `user_domain_name` / `project_domain_name`).
 
-### Key patterns (shared by GCP, AWS, Proxmox, OpenStack)
+### Vultr (basic, extensible)
+
+Same three-layer architecture as GCP/AWS:
+
+1. **Root module** (`vultr/main.tf`) — Calls 2 submodules (network, compute). Threads `vpc_id_by_name` and `firewall_group_id_by_name` from network into compute so instances can reference VPCs / firewall groups by name instead of by ID.
+
+2. **Reusable modules** (`vultr/modules/{network,compute}/`) — Standard `main.tf` + `variables.tf` + `outputs.tf` + `versions.tf` pattern. Network module flattens nested firewall rules into a compound-keyed map (`<group-name>/<index>`).
+
+3. **Environment configs** (`vultr/envs/logic3579/`) — Provider + local backend + root module call. `variables.tf` / `outputs.tf` are **symlinks** to `vultr/_shared/`. Copy `envs/logic3579/` to `envs/<other>/` when adding environments.
+
+#### Vultr module details
+
+| Module | Resources | Key features |
+|--------|-----------|--------------|
+| **network** | `vultr_vpc`, `vultr_firewall_group`, `vultr_firewall_rule` | Uses `vultr_vpc` v1 (`vultr_vpc2` is marked deprecated upstream). Firewall rules support TCP/UDP/ICMP/GRE/ESP/AH over v4/v6 with CIDR ranges; root variable validates protocol + ip_type enums. |
+| **compute** | `vultr_instance`, `vultr_ssh_key`, `vultr_startup_script` | Name-based cross-references to SSH keys / startup scripts / firewall groups / VPCs (resolved to IDs in `main.tf`). Supports backup schedules (daily/weekly/monthly/alternating), IPv6, DDoS protection, marketplace apps, user_data, ipxe chainloading, reserved IPs. |
+
+**Provider auth**: `VULTR_API_KEY` env var (preferred). The `api_key` Terraform variable defaults to `null` so the provider falls back to the env var — setting `api_key` in tfvars to anything (including placeholders) overrides that fallback.
+
+### Key patterns (shared by GCP, AWS, Proxmox, OpenStack, Vultr)
 
 - **Flattening nested inputs**: Modules use `locals` with `flatten()` to convert nested lists (e.g., networks with subnets) into flat maps keyed by compound keys like `"vpc-name/subnet-name"` for use with `for_each`.
 - **Optional attributes with defaults**: Variables use `optional(type, default)` extensively (e.g., `disk_size = optional(number, 20)`).
@@ -187,10 +237,11 @@ Same three-layer architecture as GCP/AWS:
 - **AWS**: S3 backend per environment, configured via `backend.hcl` files. State key pattern: `aws/{env_name}/terraform.tfstate`. Backend can point at any S3-compatible store via `endpoints.s3` — `envs/logic3579/` uses **Cloudflare R2** (skip flags + `use_path_style = true`; R2 credentials embedded in the gitignored `backend.hcl` to avoid colliding with the AWS provider's `AWS_ACCESS_KEY_ID`/`_SECRET_ACCESS_KEY` env vars). No DynamoDB locking on R2; Terraform 1.10+ native S3 lockfile (`use_lockfile = true`) is the alternative.
 - **Proxmox**: Local backend (`terraform.tfstate` in the env dir). Proxmox has no native Terraform backend — common alternatives for team use are an S3-compatible store like MinIO or the HTTP backend backed by GitLab/Gitea.
 - **OpenStack**: S3 backend pointed at Swift's S3-compatible API (the native `swift` backend was removed in Terraform 1.3). Generate Swift EC2 credentials with `openstack ec2 credentials create`, export them as `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`, then `terraform init -backend-config=backend.hcl`. State key pattern: `openstack/{env_name}/terraform.tfstate`.
+- **Vultr**: Local backend (`terraform.tfstate` in the env dir). Vultr has no native Terraform backend. Back up the local state file to S3/R2 with `scripts/tfvars-sync.sh ... --file terraform.tfstate` (object key is `s3://<bucket>/vultr/<env>/terraform.tfstate`).
 
 ### What's gitignored
 
-`*.tfvars`, `*.tfstate`, `*.json` (except tfvars.json), `**/keys/`, `.terraform/`. Per-env `backend.hcl` files that embed credentials are gitignored on a path-by-path basis (e.g., `aws/envs/logic3579/backend.hcl`). Use `gcp/envs/terraform.tfvars.example`, `aws/envs/terraform.tfvars.example`, `aws/envs/backend.hcl.example`, `proxmox/envs/terraform.tfvars.example`, and `openstack/envs/terraform.tfvars.example` as the reference templates.
+`*.tfvars`, `*.tfstate`, `*.json` (except tfvars.json), `**/keys/`, `.terraform/`. Per-env `backend.hcl` files that embed credentials are gitignored on a path-by-path basis (e.g., `aws/envs/logic3579/backend.hcl`). Use `gcp/envs/terraform.tfvars.example`, `aws/envs/terraform.tfvars.example`, `aws/envs/backend.hcl.example`, `proxmox/envs/terraform.tfvars.example`, `openstack/envs/terraform.tfvars.example`, and `vultr/envs/terraform.tfvars.example` as the reference templates.
 
 ## Provider versions
 
@@ -199,3 +250,4 @@ Same three-layer architecture as GCP/AWS:
 - `hashicorp/aws` `~> 5.0`
 - `bpg/proxmox` `~> 0.104.0` (see Proxmox section for the pin reason)
 - `terraform-provider-openstack/openstack` `~> 3.4`
+- `vultr/vultr` `~> 2.31`
