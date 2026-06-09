@@ -1,14 +1,20 @@
 #!/bin/bash
-# Sync env files between an env directory and S3-compatible object storage
-# (AWS S3 or Cloudflare R2). GCS support has been removed.
+# Sync env files between an env directory and remote object storage:
+#   s3  — AWS S3  via `aws s3 cp`
+#   r2  — Cloudflare R2 via `aws s3 cp --endpoint-url=...`
+#   gcs — Google Cloud Storage via `gcloud storage cp`
 #
 # Remote object key is fixed by convention:
-#   s3://<bucket>/<platform>/<env>/<file>
+#   s3://<bucket>/<platform>/<env>/<file>   (s3, r2)
+#   gs://<bucket>/<platform>/<env>/<file>   (gcs)
 #
-# Credentials come from env vars (S3_ACCESS_KEY / S3_SECRET_ACCESS_KEY):
-#   --storage r2 : required
-#   --storage s3 : optional — falls back to the AWS default credential chain
-#                  (AWS_PROFILE / AWS_ACCESS_KEY_ID / IMDS) when unset
+# Auth:
+#   s3  : S3_ACCESS_KEY / S3_SECRET_ACCESS_KEY env vars (optional —
+#         falls back to the AWS default chain: AWS_PROFILE / AWS creds / IMDS)
+#   r2  : S3_ACCESS_KEY / S3_SECRET_ACCESS_KEY env vars (required)
+#   gcs : GOOGLE_APPLICATION_CREDENTIALS env var (optional — path to a
+#         service account JSON key; takes precedence). Falls back to the
+#         active `gcloud auth list` account when unset.
 
 set -euo pipefail
 
@@ -31,44 +37,50 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 # ---- usage ---------------------------------------------------------------
 usage() {
   cat <<EOF
-Usage: $(basename "$0") <upload|download> --platform NAME --storage <s3|r2> [options]
+Usage: $(basename "$0") <upload|download> --platform NAME --storage <s3|r2|gcs> [options]
 
 Required:
   upload | download              direction
   --platform NAME                aws | gcp | proxmox | openstack | vultr
-  --storage  NAME                s3 | r2
+  --storage  NAME                s3 | r2 | gcs
 
 Options:
-  --env      NAME                specific env (e.g. dev, logic3579); omit for all envs of the platform
+  --env      NAME                specific env (e.g. dev, prod); omit for all envs of the platform
   --file     FILE                filename inside the env dir to sync (default: terraform.tfvars)
                                  e.g. terraform.tfstate, terraform.tfvars.json
   --bucket   NAME                bucket name (default: terraform-state)
   --endpoint URL                 S3 endpoint URL. Required for --storage r2; optional for --storage s3.
-                                 e.g. https://<account>.r2.cloudflarestorage.com
+                                 Ignored for --storage gcs. e.g. https://<account>.r2.cloudflarestorage.com
   --dry-run                      print the planned cp command(s) without executing
   -h, --help                     show this help
 
-Remote object key (always):
-  s3://<bucket>/<platform>/<env>/<file>
+Remote object key:
+  s3://<bucket>/<platform>/<env>/<file>   (s3, r2)
+  gs://<bucket>/<platform>/<env>/<file>   (gcs)
 
-Credentials (env vars, never CLI flags):
-  S3_ACCESS_KEY         r2: required.  s3: optional (falls back to AWS default chain)
-  S3_SECRET_ACCESS_KEY  r2: required.  s3: optional (falls back to AWS default chain)
+Credentials:
+  s3  : S3_ACCESS_KEY / S3_SECRET_ACCESS_KEY env vars (optional — falls back to AWS default chain)
+  r2  : S3_ACCESS_KEY / S3_SECRET_ACCESS_KEY env vars (required)
+  gcs : GOOGLE_APPLICATION_CREDENTIALS env var (optional — path to a service account
+        JSON key; takes precedence). Falls back to the active gcloud auth account.
 
 Examples:
-  # Back up vultr local state + tfvars to R2
-  export S3_ACCESS_KEY=...   S3_SECRET_ACCESS_KEY=...
-  $(basename "$0") upload --platform vultr --env logic3579 --storage r2 \\
-      --file terraform.tfstate --endpoint https://<account>.r2.cloudflarestorage.com
-  $(basename "$0") upload --platform vultr --env logic3579 --storage r2 \\
-      --file terraform.tfvars  --endpoint https://<account>.r2.cloudflarestorage.com
-
   # Upload one aws env tfvars to AWS S3 (uses AWS default credential chain)
   $(basename "$0") upload --platform aws --storage s3 --env dev --bucket my-tfstate
+
+  # Back up vultr local state + tfvars to R2
+  export S3_ACCESS_KEY=...   S3_SECRET_ACCESS_KEY=...
+  $(basename "$0") upload --platform vultr --env prod --storage r2 \\
+      --file terraform.tfstate --endpoint https://<account>.r2.cloudflarestorage.com
+  $(basename "$0") upload --platform vultr --env prod --storage r2 \\
+      --file terraform.tfvars  --endpoint https://<account>.r2.cloudflarestorage.com
 
   # Download all proxmox envs from R2
   $(basename "$0") download --platform proxmox --storage r2 \\
       --endpoint https://<account>.r2.cloudflarestorage.com
+
+  # Upload all gcp envs' tfvars to GCS (uses active gcloud account)
+  $(basename "$0") upload --platform gcp --storage gcs --bucket terraform-state
 
   # Preview without executing
   $(basename "$0") upload --platform aws --storage s3 --env dev --dry-run
@@ -128,8 +140,8 @@ parse_args() {
     usage
   fi
 
-  if [[ ! "$STORAGE" =~ ^(s3|r2)$ ]]; then
-    echo -e "${RED}[ERROR]${NC} --storage must be one of: s3, r2 (got: '$STORAGE')"
+  if [[ ! "$STORAGE" =~ ^(s3|r2|gcs)$ ]]; then
+    echo -e "${RED}[ERROR]${NC} --storage must be one of: s3, r2, gcs (got: '$STORAGE')"
     usage
   fi
 
@@ -142,7 +154,10 @@ parse_args() {
 # ---- remote URI ---------------------------------------------------------
 compute_remote_uri() {
   local env="$1" filename="$2"
-  echo "s3://${BUCKET}/${PLATFORM}/${env}/${filename}"
+  case "$STORAGE" in
+    gcs) echo "gs://${BUCKET}/${PLATFORM}/${env}/${filename}" ;;
+    *)   echo "s3://${BUCKET}/${PLATFORM}/${env}/${filename}" ;;
+  esac
 }
 
 # ---- cp runner ----------------------------------------------------------
@@ -188,6 +203,37 @@ run_cp() {
           echo -e "  ${CYAN}[DRY-RUN]${NC} aws s3 cp ${endpoint_arg[*]:-} \"$src\" \"$dst\""
         else
           aws s3 cp "${endpoint_arg[@]}" "$src" "$dst"
+        fi
+      fi
+      ;;
+
+    gcs)
+      # Prefer GOOGLE_APPLICATION_CREDENTIALS (service account JSON key) when set:
+      # mint an access token from ADC and pass it via CLOUDSDK_AUTH_ACCESS_TOKEN
+      # so this invocation overrides any active `gcloud auth list` account
+      # without mutating the gcloud credential store. Falls back to active
+      # gcloud auth account when GOOGLE_APPLICATION_CREDENTIALS is unset.
+      if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
+        if [[ ! -f "$GOOGLE_APPLICATION_CREDENTIALS" ]]; then
+          echo -e "  ${RED}[ERROR]${NC} GOOGLE_APPLICATION_CREDENTIALS file not found: $GOOGLE_APPLICATION_CREDENTIALS"
+          return 1
+        fi
+        if $DRY_RUN; then
+          echo -e "  ${CYAN}[DRY-RUN]${NC} CLOUDSDK_AUTH_ACCESS_TOKEN=\$(gcloud auth application-default print-access-token) \\"
+          echo -e "                gcloud storage cp \"$src\" \"$dst\"   # GOOGLE_APPLICATION_CREDENTIALS=$GOOGLE_APPLICATION_CREDENTIALS"
+        else
+          local token
+          if ! token=$(gcloud auth application-default print-access-token 2>/dev/null); then
+            echo -e "  ${RED}[ERROR]${NC} failed to mint access token from GOOGLE_APPLICATION_CREDENTIALS"
+            return 1
+          fi
+          CLOUDSDK_AUTH_ACCESS_TOKEN="$token" gcloud storage cp "$src" "$dst"
+        fi
+      else
+        if $DRY_RUN; then
+          echo -e "  ${CYAN}[DRY-RUN]${NC} gcloud storage cp \"$src\" \"$dst\""
+        else
+          gcloud storage cp "$src" "$dst"
         fi
       fi
       ;;

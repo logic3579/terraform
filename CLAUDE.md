@@ -21,22 +21,29 @@ terraform validate
 # Format check
 terraform fmt -check -recursive
 
-# Sync env files with team — S3 / R2 only (object key = s3://<bucket>/<platform>/<env>/<file>)
-# Credentials always via env vars: S3_ACCESS_KEY / S3_SECRET_ACCESS_KEY
-#   - r2: required
-#   - s3: optional (falls back to AWS default credential chain when unset)
+# Sync env files with team — supports s3 / r2 / gcs
+#   s3, r2 → object key = s3://<bucket>/<platform>/<env>/<file>
+#   gcs    → object key = gs://<bucket>/<platform>/<env>/<file>
+# Credentials:
+#   s3  : S3_ACCESS_KEY / S3_SECRET_ACCESS_KEY (optional — falls back to AWS default chain)
+#   r2  : S3_ACCESS_KEY / S3_SECRET_ACCESS_KEY (required)
+#   gcs : GOOGLE_APPLICATION_CREDENTIALS (optional — service account JSON key path,
+#         takes precedence). Falls back to the active gcloud auth account.
 export S3_ACCESS_KEY=... S3_SECRET_ACCESS_KEY=...
 
 # Defaults: --bucket terraform-state, --file terraform.tfvars
 ./scripts/tfvars-sync.sh upload   --platform aws --storage s3 --env dev               # all aws envs use AWS chain
-./scripts/tfvars-sync.sh upload   --platform aws --storage r2 --env logic3579 \
+./scripts/tfvars-sync.sh upload   --platform aws --storage r2 --env prod \
     --endpoint https://<account>.r2.cloudflarestorage.com
 ./scripts/tfvars-sync.sh download --platform proxmox --storage r2 \
     --endpoint https://<account>.r2.cloudflarestorage.com
 
+# GCS: uses your active gcloud account (gcloud auth list)
+./scripts/tfvars-sync.sh upload --platform gcp --storage gcs --env dev
+
 # --file picks the file inside the env dir. Use this to also back up
 # terraform.tfstate for envs that keep state local (e.g. vultr).
-./scripts/tfvars-sync.sh upload --platform vultr --env logic3579 --storage r2 \
+./scripts/tfvars-sync.sh upload --platform vultr --env prod --storage r2 \
     --file terraform.tfstate --endpoint https://<account>.r2.cloudflarestorage.com
 ```
 
