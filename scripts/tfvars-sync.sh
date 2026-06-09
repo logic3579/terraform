@@ -301,7 +301,7 @@ main() {
   $DRY_RUN && dry_marker=" ${CYAN}[DRY-RUN]${NC}"
 
   echo "==================================================="
-  echo -e "tfvars sync — ${action_upper}  ${PLATFORM} ⇄ ${STORAGE}  bucket=${BUCKET}  file=${FILE}${dry_marker}"
+  echo -e "tfvars sync — ${action_upper}  platform=${PLATFORM}  storage=${STORAGE}  bucket=${BUCKET}  file=${FILE}${dry_marker}"
   echo "==================================================="
   echo
 
