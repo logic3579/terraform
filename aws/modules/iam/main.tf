@@ -76,6 +76,31 @@ locals {
       ]
     ]) : entry.key => entry
   }
+
+  user_policy_attachments = {
+    for entry in flatten([
+      for u in var.iam_users : [
+        for arn in coalesce(u.managed_policy_arns, []) : {
+          key  = "${u.name}/${arn}"
+          user = u.name
+          arn  = arn
+        }
+      ]
+    ]) : entry.key => entry
+  }
+
+  user_inline_policies = {
+    for entry in flatten([
+      for u in var.iam_users : [
+        for policy_name, policy_json in coalesce(u.inline_policies, {}) : {
+          key         = "${u.name}/${policy_name}"
+          user        = u.name
+          policy_name = policy_name
+          policy_json = policy_json
+        }
+      ]
+    ]) : entry.key => entry
+  }
 }
 
 # ============================================================
@@ -146,5 +171,36 @@ resource "aws_iam_role_policy" "lambda_inline" {
 
   name   = each.value.policy_name
   role   = aws_iam_role.lambda[each.value.role].name
+  policy = each.value.policy_json
+}
+
+# ============================================================
+# IAM users
+# ============================================================
+
+resource "aws_iam_user" "this" {
+  for_each = { for u in var.iam_users : u.name => u }
+
+  name                 = each.value.name
+  path                 = each.value.path
+  permissions_boundary = each.value.permissions_boundary
+
+  tags = merge(var.tags, each.value.tags, {
+    Name = each.value.name
+  })
+}
+
+resource "aws_iam_user_policy_attachment" "managed" {
+  for_each = local.user_policy_attachments
+
+  user       = aws_iam_user.this[each.value.user].name
+  policy_arn = each.value.arn
+}
+
+resource "aws_iam_user_policy" "inline" {
+  for_each = local.user_inline_policies
+
+  name   = each.value.policy_name
+  user   = aws_iam_user.this[each.value.user].name
   policy = each.value.policy_json
 }

@@ -18,3 +18,17 @@ output "lambda_role_arns" {
     for k, v in aws_iam_role.lambda : k => v.arn
   }
 }
+
+output "iam_user_arns" {
+  description = "Map of IAM user name -> ARN."
+  value = {
+    for k, v in aws_iam_user.this : k => v.arn
+  }
+}
+
+output "iam_user_names" {
+  description = "Map of IAM user alias -> actual user name."
+  value = {
+    for k, v in aws_iam_user.this : k => v.name
+  }
+}

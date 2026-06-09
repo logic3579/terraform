@@ -46,6 +46,16 @@ output "lambda_role_arns" {
   value       = module.iam.lambda_role_arns
 }
 
+output "iam_user_arns" {
+  description = "Map of IAM user name -> ARN"
+  value       = module.iam.iam_user_arns
+}
+
+output "iam_user_names" {
+  description = "Map of IAM user alias -> actual user name"
+  value       = module.iam.iam_user_names
+}
+
 # ============================================================
 # Compute outputs
 # ============================================================

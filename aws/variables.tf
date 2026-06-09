@@ -126,6 +126,19 @@ variable "lambda_execution_roles" {
   default = []
 }
 
+variable "iam_users" {
+  description = "IAM users with managed-policy attachments and inline policies. Console passwords and access keys are not managed here; create them out-of-band to keep secrets out of state."
+  type = list(object({
+    name                 = string
+    path                 = optional(string, "/")
+    permissions_boundary = optional(string)
+    managed_policy_arns  = optional(list(string), [])
+    inline_policies      = optional(map(string), {})
+    tags                 = optional(map(string), {})
+  }))
+  default = []
+}
+
 # ============================================================
 # EC2 / Compute resources
 # ============================================================

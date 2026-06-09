@@ -18,6 +18,7 @@ module "iam" {
 
   ec2_instance_profiles  = var.ec2_instance_profiles
   lambda_execution_roles = var.lambda_execution_roles
+  iam_users              = var.iam_users
   tags                   = var.tags
 }
 

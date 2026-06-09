@@ -42,6 +42,12 @@ variable "lambda_execution_roles" {
   default     = []
 }
 
+variable "iam_users" {
+  description = "IAM users"
+  type        = any
+  default     = []
+}
+
 variable "key_pairs" {
   description = "SSH key pairs"
   type        = any
