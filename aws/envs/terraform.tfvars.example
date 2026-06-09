@@ -146,7 +146,7 @@ vpcs = [
 ]
 
 # ========================================
-# IAM: EC2 instance profiles + Lambda execution roles
+# IAM: EC2 instance profiles + Lambda execution roles + IAM users
 # ========================================
 # Each entry under ec2_instance_profiles creates one IAM role and one
 # instance profile of the same name, with the listed managed policies attached.
@@ -159,6 +159,16 @@ ec2_instance_profiles = [
   #   managed_policy_arns = [
   #     "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore",
   #   ]
+  #   inline_policies = {
+  #     "s3-read" = jsonencode({
+  #       Version = "2012-10-17"
+  #       Statement = [{
+  #         Effect   = "Allow"
+  #         Action   = ["s3:GetObject"]
+  #         Resource = ["arn:aws:s3:::my-bucket/*"]
+  #       }]
+  #     })
+  #   }
   # },
 ]
 
@@ -168,6 +178,31 @@ lambda_execution_roles = [
   #   managed_policy_arns = [
   #     "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
   #   ]
+  # },
+]
+
+# Standalone IAM users with managed-policy attachments + inline policies.
+# Console passwords and programmatic access keys are NOT managed here —
+# create them out-of-band (console / CLI) and store secrets in SSM /
+# Secrets Manager. Terraform would otherwise persist them in state in cleartext.
+
+iam_users = [
+  # {
+  #   name = "deploy-bot"
+  #   path = "/service-accounts/"
+  #   managed_policy_arns = [
+  #     "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+  #   ]
+  #   inline_policies = {
+  #     "ssm-read" = jsonencode({
+  #       Version = "2012-10-17"
+  #       Statement = [{
+  #         Effect   = "Allow"
+  #         Action   = ["ssm:GetParameter", "ssm:GetParameters"]
+  #         Resource = ["arn:aws:ssm:*:*:parameter/deploy/*"]
+  #       }]
+  #     })
+  #   }
   # },
 ]
 
