@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Common Commands
 
-All GCP Terraform operations run from environment directories (`gcp/envs/dev/` or `gcp/envs/prod/`):
+All GCP Terraform operations run from environment directories (e.g. `gcp/envs/dev/`):
 
 ```bash
 # Initialize (required once per environment)
@@ -125,7 +125,7 @@ Three-layer module architecture:
 
 2. **Reusable modules** (`gcp/modules/{compute,gke,iam,lb,nat,neg-lb,network,storage}/`) — Each module follows the standard `main.tf` + `variables.tf` + `outputs.tf` + `versions.tf` pattern. Resources are created with `for_each` over object maps derived from flat input lists.
 
-3. **Environment configs** (`gcp/envs/{dev,prod}/`) — Each env has its own `main.tf` (provider + backend + root module call) and `backend.hcl` (GCS bucket/prefix). `variables.tf` and `outputs.tf` are **symlinks** to `gcp/_shared/` — do not edit them in env dirs. `envs/dev/` is the included example; replicate it to `envs/test/`, `envs/uat/`, etc. as needed.
+3. **Environment configs** (`gcp/envs/dev/`) — Provider + GCS backend + root module call. `variables.tf` and `outputs.tf` are **symlinks** to `gcp/_shared/` — do not edit them in env dirs. `envs/dev/` is the included example; replicate it to `envs/prod/`, `envs/test/`, `envs/uat/`, etc. as needed. `backend.hcl` is gitignored; copy from `gcp/envs/backend.hcl.example` and fill in bucket + prefix.
 
 #### GCP module details
 
@@ -240,15 +240,15 @@ Same three-layer architecture as GCP/AWS:
 
 ### State management
 
-- **GCP**: GCS backend per environment, configured via `backend.hcl` files. Same GCS bucket stores both state files and team-shared tfvars (via `tfvars-sync.sh`). State prefix pattern: `gcp/{env_name}` (e.g., `gcp/dev`, `gcp/prod`).
+- **GCP**: GCS backend per environment, configured via `backend.hcl` files (copy from `gcp/envs/backend.hcl.example`; gitignored). Same GCS bucket stores both state files and team-shared tfvars (via `tfvars-sync.sh`). State prefix pattern: `gcp/{env_name}` (e.g., `gcp/dev`).
 - **AWS**: S3 backend per environment, configured via `backend.hcl` files. State key pattern: `aws/{env_name}/terraform.tfstate`. Backend can point at any S3-compatible store via `endpoints.s3` — `envs/logic3579/` uses **Cloudflare R2** (skip flags + `use_path_style = true`; R2 credentials embedded in the gitignored `backend.hcl` to avoid colliding with the AWS provider's `AWS_ACCESS_KEY_ID`/`_SECRET_ACCESS_KEY` env vars). No DynamoDB locking on R2; Terraform 1.10+ native S3 lockfile (`use_lockfile = true`) is the alternative.
 - **Proxmox**: Local backend (`terraform.tfstate` in the env dir). Proxmox has no native Terraform backend — common alternatives for team use are an S3-compatible store like MinIO or the HTTP backend backed by GitLab/Gitea.
-- **OpenStack**: S3 backend pointed at Swift's S3-compatible API (the native `swift` backend was removed in Terraform 1.3). Generate Swift EC2 credentials with `openstack ec2 credentials create`, export them as `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`, then `terraform init -backend-config=backend.hcl`. State key pattern: `openstack/{env_name}/terraform.tfstate`.
+- **OpenStack**: S3 backend pointed at Swift's S3-compatible API (the native `swift` backend was removed in Terraform 1.3). Generate Swift EC2 credentials with `openstack ec2 credentials create`, export them as `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`, then `terraform init -backend-config=backend.hcl`. Copy from `openstack/envs/backend.hcl.example` (gitignored). State key pattern: `openstack/{env_name}/terraform.tfstate`.
 - **Vultr**: Local backend (`terraform.tfstate` in the env dir). Vultr has no native Terraform backend. Back up the local state file to S3/R2 with `scripts/tfvars-sync.sh ... --file terraform.tfstate` (object key is `s3://<bucket>/vultr/<env>/terraform.tfstate`).
 
 ### What's gitignored
 
-`*.tfvars`, `*.tfstate`, `*.json` (except tfvars.json), `**/keys/`, `.terraform/`. Per-env `backend.hcl` files that embed credentials are gitignored on a path-by-path basis (e.g., `aws/envs/logic3579/backend.hcl`). Use `gcp/envs/terraform.tfvars.example`, `aws/envs/terraform.tfvars.example`, `aws/envs/backend.hcl.example`, `proxmox/envs/terraform.tfvars.example`, `openstack/envs/terraform.tfvars.example`, and `vultr/envs/terraform.tfvars.example` as the reference templates.
+`*.tfvars`, `*.tfstate`, `*.json` (except tfvars.json), `**/keys/`, `.terraform/`. All per-env `backend.hcl` files are gitignored via `**/backend.hcl` so credentials embedded in them never get committed. Use the reference templates: `aws/envs/backend.hcl.example`, `gcp/envs/backend.hcl.example`, `openstack/envs/backend.hcl.example`, `gcp/envs/terraform.tfvars.example`, `aws/envs/terraform.tfvars.example`, `proxmox/envs/terraform.tfvars.example`, `openstack/envs/terraform.tfvars.example`, and `vultr/envs/terraform.tfvars.example`.
 
 ## Provider versions
 

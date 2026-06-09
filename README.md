@@ -55,8 +55,11 @@ terraform apply
 
 The `aws/envs/` directory also includes `backend.hcl.example` — a template for
 pointing the S3 backend at **Cloudflare R2** (any S3-compatible store works
-the same way). Per-env `backend.hcl` files that embed R2 credentials should
-be added to `.gitignore`.
+the same way). Equivalent templates exist for the other remote-backend
+platforms: `gcp/envs/backend.hcl.example`, `openstack/envs/backend.hcl.example`.
+All `backend.hcl` files are gitignored via the `**/backend.hcl` rule, so
+credentials embedded in them are never committed — copy the example, fill in
+your values, and `terraform init -backend-config=backend.hcl`.
 
 ### Proxmox VE
 
@@ -95,7 +98,11 @@ terraform apply
 ```
 
 State is kept local. To back up `terraform.tfstate` (and `terraform.tfvars`) to
-S3/R2, use `scripts/tfvars-sync.sh` with `--file terraform.tfstate`.
+remote storage, use `scripts/tfvars-sync.sh` with `--file terraform.tfstate`.
+The script supports `--storage s3`, `--storage r2` (S3-compatible via
+`--endpoint`), and `--storage gcs` (`gcloud storage cp`, picks up
+`GOOGLE_APPLICATION_CREDENTIALS` when set, else the active `gcloud auth`
+account).
 
 ## Resources covered
 
