@@ -39,5 +39,6 @@ terraform.rc
 # Ignore Service Account Key files (sensitive)
 **/keys/
 
-# Per-env backend configs that embed account identifiers
-aws/envs/logic3579/backend.hcl
+# Per-env backend configs (may embed credentials / account identifiers).
+# Templates live next to each platform's envs/ as backend.hcl.example.
+**/backend.hcl

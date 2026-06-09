@@ -2,9 +2,8 @@
 #
 # Copy this file to backend.hcl in your env directory (e.g.,
 # aws/envs/<env>/backend.hcl) and fill in the placeholders below.
-# Per-env backend.hcl files that embed R2 credentials should be gitignored —
-# add an entry under .gitignore (see aws/envs/logic3579/backend.hcl as
-# precedent).
+# All backend.hcl files are gitignored via the **/backend.hcl rule, so
+# credentials embedded here won't be committed.
 #
 # To create R2 API credentials:
 #   1. Cloudflare dashboard → R2 → Manage R2 API Tokens

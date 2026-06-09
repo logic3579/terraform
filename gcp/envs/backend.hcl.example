@@ -1,0 +1,12 @@
+# Terraform gcs backend.
+#
+# Copy this file to backend.hcl in your env directory (e.g.,
+# gcp/envs/<env>/backend.hcl) and fill in the placeholders below.
+# All backend.hcl files are gitignored via the **/backend.hcl rule.
+#
+# Auth: uses Application Default Credentials. Run one of:
+#   gcloud auth application-default login          # interactive
+#   export GOOGLE_APPLICATION_CREDENTIALS=<key>    # service account JSON key
+
+bucket = "<your-tfstate-bucket>" # e.g. "myproject-terraform-state"
+prefix = "gcp/<env>"             # state object prefix, e.g. "gcp/dev"
