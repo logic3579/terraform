@@ -50,6 +50,9 @@ export S3_ACCESS_KEY=... S3_SECRET_ACCESS_KEY=...
 AWS Terraform operations run from environment directories (`aws/envs/dev/`):
 
 ```bash
+# IAM Identity Center SSO — re-authenticate when session expires
+aws sso login --profile logic3579-admin
+
 # Initialize (with S3 backend)
 cd aws/envs/dev
 terraform init -backend-config=backend.hcl
@@ -151,7 +154,7 @@ Same three-layer architecture as GCP:
 3. **Environment configs** (`aws/envs/{dev,logic3579}/`) — Provider + S3 backend + root module call. `variables.tf` and `outputs.tf` are **symlinks** to `aws/_shared/` — do not edit them in env dirs.
    - `envs/dev/` uses an S3 backend (placeholder bucket).
    - `envs/logic3579/` uses an **S3 backend pointed at Cloudflare R2** via `endpoints.s3` + skip flags; its `backend.hcl` embeds R2 credentials directly (gitignored — see `.gitignore`). The reusable template lives at `aws/envs/backend.hcl.example`.
-   - The AWS provider's `region` and `profile` are sourced from `var.region` / `var.aws_profile`. For SSO users on AWS CLI ≥ 2.27 (new `aws login` command writing to `~/.aws/login/`), the Go SDK can't read that cache directly — bridge it via a `[profile terraform]` in `~/.aws/config` with `credential_process = aws configure export-credentials --profile default --format process`, then set `aws_profile = "terraform"` in tfvars.
+   - The AWS provider's `region` and `profile` are sourced from `var.region` / `var.aws_profile`. Auth uses **IAM Identity Center SSO** — configure a named profile in `~/.aws/config` with `sso_start_url`, `sso_region`, `sso_account_id`, and `sso_role_name`, then set `aws_profile` to the profile name in tfvars. Run `aws sso login --profile <name>` before Terraform commands (session expires after 8–12 hours).
 
 **Routing design**: One public route table per VPC (0.0.0.0/0 → IGW), one private route table per NAT gateway (0.0.0.0/0 → NAT GW), isolated subnets use VPC default route table.
 

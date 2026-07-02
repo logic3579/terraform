@@ -42,3 +42,6 @@ terraform.rc
 # Per-env backend configs (may embed credentials / account identifiers).
 # Templates live next to each platform's envs/ as backend.hcl.example.
 **/backend.hcl
+
+# OpenCode agent working directory
+.omo/
