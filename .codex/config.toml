@@ -1,0 +1,2 @@
+[plugins."terraform@hashicorp"]
+enabled = true

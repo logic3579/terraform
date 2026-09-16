@@ -48,7 +48,7 @@ terraform apply
 ```bash
 cd aws/envs/dev
 cp ../terraform.tfvars.example terraform.tfvars   # then edit
-terraform init -backend-config=backend.hcl        # or: terraform init -backend=false
+terraform init -backend-config=backend.hcl
 terraform plan
 terraform apply
 ```
@@ -127,4 +127,4 @@ terraform destroy
 - Always `terraform plan` before applying.
 - `*.tfvars` and `*.tfstate` are gitignored — use `<platform>/envs/terraform.tfvars.example` as the template.
 - Be mindful of cloud costs.
-- See `CLAUDE.md` for module-by-module architecture details.
+- See [AGENTS.md](AGENTS.md) for project conventions and module architecture.
