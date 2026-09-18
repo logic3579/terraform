@@ -17,6 +17,8 @@ zone       = "asia-southeast1-a"   # Default zone
 # The `networks` variable supports multiple VPCs with their subnets and firewalls.
 # Each network is a self-contained configuration object.
 
+# Each entry defaults to creating a VPC. To attach rules to an existing VPC:
+# { name = "existing-vpc", existing = true, subnets = [], firewalls = [...] }
 networks = [
   # Example 1: Primary VPC with subnets and firewalls
   {

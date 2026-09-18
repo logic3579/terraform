@@ -2,6 +2,45 @@
 
 This directory contains Terraform configurations for managing GCP infrastructure across multiple environments.
 
+## Base environment (shared infrastructure)
+
+`envs/base/` manages shared infrastructure with `env = "base"`. Its local
+`terraform.tfvars` supplies the project, locations, and resource lists. Choose
+the appropriate locations before adding resources.
+
+Configure the gitignored `envs/base/backend.hcl` with your bucket and a unique prefix:
+
+```hcl
+bucket = "<your-tfstate-bucket>"
+prefix = "gcp/<your-base-project-id>"
+```
+
+The bucket must already exist, and the Terraform identity needs access to it.
+Using it as a backend does not add the bucket to the managed `buckets` list.
+Both `terraform.tfvars` and `backend.hcl` are local, gitignored files and must be
+provided separately on another checkout. Keep the generated provider lockfile tracked.
+
+From the repository root:
+
+```bash
+rtk proxy terraform -chdir=gcp/envs/base init -backend-config=backend.hcl
+rtk proxy terraform -chdir=gcp/envs/base validate
+rtk proxy terraform -chdir=gcp/envs/base plan
+```
+
+For browser authorization on another trusted computer, run
+`gcloud auth application-default login --no-browser` on the Terraform host,
+execute its generated `--remote-bootstrap` command on the computer with a browser
+and gcloud CLI (372.0 or later), then paste its output back into the original
+prompt. Copy the URL as plain text from the remote terminal: preserve literal
+`&` separators and underscores, without HTML (`&amp;`) or Markdown (`\_`)
+escaping. Use the response from the same active login attempt. A gcloud CLI
+login alone is not the same as ADC. See the
+[official ADC login instructions](https://cloud.google.com/sdk/gcloud/reference/auth/application-default/login).
+The Terraform host still needs network access to Google authentication and API endpoints.
+
+---
+
 ## Quick Start
 
 ### Prerequisites
@@ -136,6 +175,13 @@ ln -s ../../_shared/outputs.tf outputs.tf
 ## Modules Overview
 
 ### Network Module (`modules/network/`)
+
+Set `existing = true` on a `networks` entry to look up a VPC in the configured
+project and manage only the subnets/firewalls declared beneath it. The default
+is `false`, preserving network creation. Outputs include both created and
+referenced networks. Do not switch a Terraform-managed VPC to `existing = true`
+without a separate state migration: removing its resource declaration can plan
+its destruction.
 
 Manages VPC networks, subnets, and firewall rules with **multi-VPC support**.
 

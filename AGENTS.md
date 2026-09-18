@@ -17,7 +17,7 @@ Five platforms sharing the same three-layer architecture:
 
 | Platform | Modules and responsibilities | Tracked environments |
 |---|---|---|
-| GCP | `network` VPC/subnets/firewalls; `nat` routers/Cloud NAT; `iam` service accounts and memberships; `storage` buckets; `compute` VMs/disks/instance groups; `lb` instance-group ALB; `neg-lb` existing NEG-backed ALB; `gke` clusters/node pools | `dev` |
+| GCP | `network` VPC/subnets/firewalls; `nat` routers/Cloud NAT; `iam` service accounts and memberships; `storage` buckets; `compute` VMs/disks/instance groups; `lb` instance-group ALB; `neg-lb` existing NEG-backed ALB; `gke` clusters/node pools | `dev`, `base` |
 | AWS | `network` VPC/routing/SGs; `iam` roles/profiles/users; `compute` EC2/key pairs/EIPs; `rds` databases/passwords; `lambda` archives/functions/URLs; `budget` budgets/notifications | `dev`, `logic3579` |
 | Proxmox | `network` Linux bridges; `storage` image/ISO/template downloads; `compute` KVM VMs/cloud-init | `dev` |
 | OpenStack | `network` Neutron networks/routers/SGs/floating IPs; `storage` Cinder volumes; `compute` instances/keypairs | `dev` |

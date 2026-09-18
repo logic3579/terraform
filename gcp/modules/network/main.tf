@@ -33,9 +33,21 @@ locals {
   }
 }
 
+# Existing VPCs are read only; their lifecycle is managed outside this module.
+data "google_compute_network" "existing" {
+  for_each = { for n in var.networks : n.name => n if n.existing }
+
+  project = var.project_id
+  name    = each.value.name
+}
+
+locals {
+  networks_by_name = merge(google_compute_network.this, data.google_compute_network.existing)
+}
+
 # Create multiple VPCs
 resource "google_compute_network" "this" {
-  for_each = { for n in var.networks : n.name => n }
+  for_each = { for n in var.networks : n.name => n if !n.existing }
 
   project                         = var.project_id
   name                            = each.value.name
@@ -53,7 +65,7 @@ resource "google_compute_subnetwork" "this" {
   name                     = each.value.subnet.name
   ip_cidr_range            = each.value.subnet.cidr
   region                   = each.value.subnet.region
-  network                  = google_compute_network.this[each.value.network_name].id
+  network                  = local.networks_by_name[each.value.network_name].id
   private_ip_google_access = true
   stack_type               = "IPV4_ONLY"
   purpose                  = "PRIVATE"
@@ -73,7 +85,7 @@ resource "google_compute_firewall" "this" {
 
   project     = var.project_id
   name        = each.value.firewall.name
-  network     = google_compute_network.this[each.value.network_name].name
+  network     = local.networks_by_name[each.value.network_name].name
   description = coalesce(each.value.firewall.description, "")
   direction   = each.value.firewall.direction
   priority    = coalesce(each.value.firewall.priority, 1000)

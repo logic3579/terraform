@@ -1,10 +1,10 @@
 variable "env" {
-  description = "Environment name (e.g. dev, test, uat, prod)"
+  description = "Environment name (base for shared infrastructure, or dev, test, uat, prod)"
   type        = string
 
   validation {
-    condition     = contains(["dev", "test", "uat", "prod"], var.env)
-    error_message = "Environment must be one of: dev, test, uat, prod."
+    condition     = contains(["base", "dev", "test", "uat", "prod"], var.env)
+    error_message = "Environment must be one of: base, dev, test, uat, prod."
   }
 }
 
@@ -47,7 +47,8 @@ variable "zone" {
 variable "networks" {
   description = "List of VPC network configurations with their subnets and firewalls"
   type = list(object({
-    name = string
+    name     = string
+    existing = optional(bool, false) # Look up an existing VPC instead of creating it.
     subnets = optional(list(object({
       name   = string
       cidr   = string

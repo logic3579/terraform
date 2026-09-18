@@ -6,7 +6,8 @@ variable "project_id" {
 variable "networks" {
   description = "List of VPC network configurations with their subnets and firewalls"
   type = list(object({
-    name = string
+    name     = string
+    existing = optional(bool, false) # Look up an existing VPC instead of creating it.
     subnets = optional(list(object({
       name   = string
       cidr   = string

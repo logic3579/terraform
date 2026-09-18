@@ -1,7 +1,7 @@
 output "networks" {
-  description = "Map of VPC networks"
+  description = "Map of created and referenced existing VPC networks"
   value = {
-    for k, v in google_compute_network.this : k => {
+    for k, v in local.networks_by_name : k => {
       name      = v.name
       self_link = v.self_link
       id        = v.id

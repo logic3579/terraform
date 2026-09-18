@@ -3,7 +3,7 @@
 # Values are provided via terraform.tfvars
 
 variable "env" {
-  description = "Environment name (e.g. dev, test, prod)"
+  description = "Environment name (base for shared infrastructure, or dev, test, uat, prod)"
   type        = string
 }
 
