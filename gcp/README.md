@@ -50,9 +50,13 @@ The Terraform host still needs network access to Google authentication and API e
 3. **gcloud CLI**: Install and configure [gcloud CLI](https://cloud.google.com/sdk/docs/install)
 4. **Terraform**: Install [Terraform](https://www.terraform.io/downloads) (v1.5+)
 
-### Important: Configure GCS Backend First
+### Configure the Backend First
 
-**Before running any Terraform commands**, you must configure the GCS backend for state management.
+The `dev` and `base` entrypoints use GCS. Follow these steps for those environments.
+The `logic3579` entrypoint uses S3-compatible R2; select the S3 section of
+`envs/backend.hcl.example` and use `key = "gcp/logic3579/terraform.tfstate"`.
+In both cases, pass `-backend-config=backend.hcl` to init; Terraform does not
+automatically load this file.
 
 1. Create a GCS bucket for Terraform state:
 
@@ -99,9 +103,9 @@ gcp/
 │   ├── compute/                 # Compute Engine VMs and instance groups
 │   ├── iam/                     # Service accounts and IAM
 │   ├── storage/                 # Cloud Storage buckets
-│   └── lb/                      # Load Balancers (HTTP/HTTPS)
-├── scripts/                     # Utility scripts
-│   └── tfvars-sync.sh           # Sync tfvars with GCS bucket
+│   ├── lb/                      # Instance-group load balancers
+│   ├── neg-lb/                  # Existing NEG-backed load balancers
+│   └── gke/                     # GKE clusters and node pools
 ├── templates/                   # Configuration templates
 │   └── cloud-init.yaml.tpl      # Cloud-init template for VM initialization
 └── envs/                        # Environment-specific configurations
@@ -112,7 +116,9 @@ gcp/
     │   ├── outputs.tf           # → symlink to ../../_shared/outputs.tf
     │   ├── backend.hcl          # Backend configuration
     │   └── terraform.tfvars     # Environment-specific values (gitignored)
-    └── prod/                    # Production environment
+    ├── base/                    # Shared infrastructure
+    │   └── ...
+    └── logic3579/               # logic3579 project configuration
         └── ...
 ```
 
@@ -123,7 +129,22 @@ gcp/
 | Environment | Directory       | Description                                  |
 | ----------- | --------------- | -------------------------------------------- |
 | `dev`       | `envs/dev/`     | Development environment (multi-VPC example)  |
-| `prod`      | `envs/prod/`    | Production environment                       |
+| `base`      | `envs/base/`    | Shared infrastructure                        |
+| `logic3579` | `envs/logic3579/` | logic3579 project configuration            |
+
+For `envs/logic3579/`, set `project_id = "logic3579"` in local, gitignored
+`terraform.tfvars`. Initial values can follow `base`: `env = "base"`,
+`region = "asia-east2"`, and `zone = "asia-east2-a"`. Resource lists default
+to empty; the tracked entrypoint does not define project resources itself.
+The directory name identifies the project configuration; `env` must be one of
+`base`, `dev`, `test`, `uat`, or `prod`.
+
+This environment uses an S3-compatible backend with the same bucket, endpoint,
+and backend credentials as `aws/envs/logic3579/backend.hcl`, with
+`key = "gcp/logic3579/terraform.tfstate"`. On another checkout, copy that local
+backend file into `gcp/envs/logic3579/backend.hcl` and update the key before
+running `terraform init -backend-config=backend.hcl`. Both local files are
+gitignored. GCP provider authentication uses Google credentials separately.
 
 Replicate `envs/dev/` to `envs/test/`, `envs/uat/`, etc. for additional environments — each one is a self-contained directory with its own `main.tf`, `backend.hcl`, and symlinks to `_shared/`.
 
@@ -725,98 +746,23 @@ terraform apply
 
 ## Team Collaboration - tfvars Sync
 
-The `terraform.tfvars` files are gitignored for security (they may contain sensitive values). For team collaboration, use the GCS backend bucket to share tfvars files.
+The repository-level [sync guide](../README.md#sync-terraformtfvars) documents
+CLI selection, authentication, options, and overwrite behavior. The script
+syncs only `terraform.tfvars`; Terraform manages remote state separately.
 
-### How It Works
-
-```
-┌─────────────────┐         ┌──────────────────────────────┐
-│  Local Machine  │ ◄─────► │  GCS Backend Bucket          │
-│                 │  sync   │                              │
-│  envs/dev/      │         │  gs://bucket/gcp/dev/        │
-│  └─ terraform.  │         │  ├─ default.tfstate          │
-│     tfvars      │         │  └─ terraform.tfvars         │
-└─────────────────┘         └──────────────────────────────┘
-```
-
-The tfvars file is stored alongside the state file in the same GCS prefix, making it easy to manage.
-
-### Using the Sync Script
+Run from the repository root:
 
 ```bash
-# From gcp/ directory
-cd gcp
+# GCS: download tfvars for dev; add --dry-run to preview.
+rtk proxy ./scripts/tfvars-sync.sh download --platform gcp --env dev --storage gcs
 
-# Download tfvars for all environments
-./scripts/tfvars-sync.sh download
-
-# Download tfvars for specific environment
-./scripts/tfvars-sync.sh download dev
-
-# Upload tfvars for all environments (after making changes)
-./scripts/tfvars-sync.sh upload
-
-# Upload tfvars for specific environment
-./scripts/tfvars-sync.sh upload prod
+# R2: upload logic3579 tfvars after authenticating with cf.
+rtk proxy ./scripts/tfvars-sync.sh upload --platform gcp --env logic3579 --storage r2
 ```
 
-### New Team Member Setup
-
-When a new team member clones the repository:
-
-```bash
-# 1. Clone the repository
-git clone <repo-url>
-cd terraform/gcp
-
-# 2. Authenticate with GCP
-gcloud auth login
-gcloud auth application-default login
-
-# 3. Download tfvars from GCS
-./scripts/tfvars-sync.sh download
-
-# 4. Initialize and verify
-cd envs/dev
-terraform init -backend-config=backend.hcl
-terraform plan  # Should show no changes
-```
-
-### Workflow for Making Changes
-
-```bash
-# 1. Download latest tfvars (in case others made changes)
-./scripts/tfvars-sync.sh download dev
-
-# 2. Make changes to terraform.tfvars
-vim envs/dev/terraform.tfvars
-
-# 3. Preview and apply changes
-cd envs/dev
-terraform plan
-terraform apply
-
-# 4. Upload updated tfvars to GCS
-cd ../..
-./scripts/tfvars-sync.sh upload dev
-```
-
-### Important Notes
-
-- **Always download before editing**: Ensure you have the latest tfvars before making changes
-- **Upload after apply**: After successful `terraform apply`, upload your tfvars changes
-- **Bucket permissions**: Team members need `storage.objects.get` and `storage.objects.create` permissions on the backend bucket
-- **No automatic sync**: The sync is manual - coordinate with your team to avoid conflicts
-- **Version control**: GCS bucket versioning provides history of tfvars changes
-
-### Handling Conflicts
-
-If two people modify tfvars simultaneously:
-
-1. Download the current version from GCS
-2. Manually merge your changes with the downloaded version
-3. Run `terraform plan` to verify
-4. Upload the merged tfvars
+Use `--bucket` to select the tfvars bucket; it is not read from `backend.hcl`.
+Object keys are `gcp/<env>/terraform.tfvars` for either storage. Preserve local
+edits before downloading, and coordinate changes with other users before upload.
 
 ---
 

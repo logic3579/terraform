@@ -11,12 +11,7 @@ terraform {
     }
   }
 
-  # Local backend — Vultr has no native Terraform backend. Swap for any
-  # S3-compatible store (R2/MinIO/S3) if collaborating across machines; see
-  # aws/envs/logic3579/backend.hcl for the R2 pattern used in this repo.
-  backend "local" {
-    path = "terraform.tfstate"
-  }
+  backend "s3" {} # Configuration loaded from backend.hcl
 }
 
 provider "vultr" {

@@ -17,7 +17,7 @@ Five platforms sharing the same three-layer architecture:
 
 | Platform | Modules and responsibilities | Tracked environments |
 |---|---|---|
-| GCP | `network` VPC/subnets/firewalls; `nat` routers/Cloud NAT; `iam` service accounts and memberships; `storage` buckets; `compute` VMs/disks/instance groups; `lb` instance-group ALB; `neg-lb` existing NEG-backed ALB; `gke` clusters/node pools | `dev`, `base` |
+| GCP | `network` VPC/subnets/firewalls; `nat` routers/Cloud NAT; `iam` service accounts and memberships; `storage` buckets; `compute` VMs/disks/instance groups; `lb` instance-group ALB; `neg-lb` existing NEG-backed ALB; `gke` clusters/node pools | `dev`, `base`, `logic3579` |
 | AWS | `network` VPC/routing/SGs; `iam` roles/profiles/users; `compute` EC2/key pairs/EIPs; `rds` databases/passwords; `lambda` archives/functions/URLs; `budget` budgets/notifications | `dev`, `logic3579` |
 | Proxmox | `network` Linux bridges; `storage` image/ISO/template downloads; `compute` KVM VMs/cloud-init | `dev` |
 | OpenStack | `network` Neutron networks/routers/SGs/floating IPs; `storage` Cinder volumes; `compute` instances/keypairs | `dev` |
@@ -36,19 +36,23 @@ Edit shared files through `<platform>/_shared/`. Writing through a symlink may c
 
 ## .gitignore — what's never committed
 
-`*.tfvars`, `*.tfvars.json`, `*.tfstate`, `*.tfstate.*`, `**/keys/`, `.terraform/`, and **`**/backend.hcl`** (credentials). Generic `*.json` files are NOT ignored. Reference templates live directly in `<platform>/envs/`. Provider lockfiles (`.terraform.lock.hcl`) are tracked; preserve them. Saved plan files are not currently ignored, so do not commit them.
+`*.tfvars`, `*.tfvars.json`, `*.tfstate`, `*.tfstate.*`, `**/keys/`, `.terraform/`, `.cloudflare/` (local CLI cache/state), and **`**/backend.hcl`** (credentials). Generic `*.json` files are NOT ignored. Reference templates live directly in `<platform>/envs/`. Provider lockfiles (`.terraform.lock.hcl`) are tracked; preserve them. Saved plan files are not currently ignored, so do not commit them.
 
 ## Per-platform operational commands
 
 Run init/validate/plan/apply from the target env directory. Run repository-wide formatting checks from the repository root. Each platform has auth/backend quirks:
 
+`backend.hcl` is not auto-loaded; always pass `-backend-config=backend.hcl`
+for remote-backend init. Its type must match the env's `main.tf`; the GCP
+backend example contains two mutually exclusive sections (GCS and S3/R2).
+
 | Platform | Init | Backend | Auth note |
 |---|---|---|---|
-| GCP | `terraform init -backend-config=backend.hcl` | GCS | Both `google` AND `google-beta` providers required |
+| GCP | `terraform init -backend-config=backend.hcl` | GCS; `logic3579` uses S3-compatible storage | Both `google` AND `google-beta` providers required |
 | AWS | `terraform init -backend-config=backend.hcl` | S3 (or R2) | IAM Identity Center SSO — run `aws sso login --profile <name>` first |
 | Proxmox | `terraform init` (no backend args) | Local | `bpg/proxmox` pinned to `~> 0.104.0` — DO NOT BUMP (v0.105 schema bug) |
 | OpenStack | `terraform init -backend-config=backend.hcl` | S3 via Swift | Export `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` (Swift EC2 creds) |
-| Vultr | `terraform init` (no backend args) | Local | `VULTR_API_KEY` env var only; do NOT set `api_key` in tfvars |
+| Vultr | `terraform init -backend-config=backend.hcl` | S3-compatible storage (R2) | `VULTR_API_KEY` env var only; do NOT set `api_key` in tfvars |
 
 ## Provider version pins (do NOT bump blindly)
 
@@ -82,21 +86,33 @@ rtk proxy cp <platform>/envs/<source-env>/main.tf <platform>/envs/<new-env>/main
 rtk proxy ln -s ../../_shared/variables.tf <platform>/envs/<new-env>/variables.tf
 rtk proxy ln -s ../../_shared/outputs.tf <platform>/envs/<new-env>/outputs.tf
 rtk proxy cp <platform>/envs/terraform.tfvars.example <platform>/envs/<new-env>/terraform.tfvars
-# Remote-backend platforms only: GCP, AWS, OpenStack
+# Remote-backend platforms only: GCP, AWS, OpenStack, Vultr
 rtk proxy cp <platform>/envs/backend.hcl.example <platform>/envs/<new-env>/backend.hcl
 ```
 
-Set the new environment name, auth, and unique backend prefix/key before init. Vultr's source env is `logic3579`; it has no `dev` directory. Proxmox and Vultr have no backend.hcl template.
+Set the new environment name, auth, and unique backend prefix/key before init. Vultr's source env is `logic3579`; it has no `dev` directory. Proxmox has no backend.hcl template.
+
+For GCP, directory/project names are independent of `var.env`, which accepts
+only `base`, `dev`, `test`, `uat`, or `prod`. The `logic3579` project uses its
+own environment directory; do not add its project ID to the environment enum.
 
 ## State management & tfvars-sync.sh
 
-`scripts/tfvars-sync.sh upload|download --platform X --storage s3|r2|gcs [--env Y]` syncs `terraform.tfvars` (and optionally `terraform.tfstate`) to remote object storage. Defaults: `--file terraform.tfvars`, `--bucket terraform-state`. For `--storage r2`, `--endpoint` is required and `S3_ACCESS_KEY`/`S3_SECRET_ACCESS_KEY` env vars are mandatory.
+`scripts/tfvars-sync.sh upload|download --platform X --storage s3|r2|gcs [--env Y]` syncs only `terraform.tfvars` to remote object storage. The default bucket is `terraform-state`. S3 uses `aws s3 cp`, R2 uses the official Cloudflare `cf r2 objects put/get` CLI, and GCS uses `gcloud storage cp`.
 
 - Invoke as `rtk proxy ./scripts/tfvars-sync.sh ...` from the repository root; the script resolves envs relative to its own location.
-- Omitting `--env` processes every env for the platform. `--file` selects one file per invocation; state and tfvars require separate calls. Downloads overwrite the selected local file.
-- Object keys are `<platform>/<env>/<file>` for all three storage types. Use `--dry-run` to preview; R2 still requires credentials and its preview reveals the access-key prefix.
-- S3 credentials fall back to the AWS default chain; GCS uses `GOOGLE_APPLICATION_CREDENTIALS` when supplied, otherwise the active gcloud account. R2 forces `--region auto`.
-- GCP backend prefix convention is `gcp/<env>`; AWS/OpenStack backend key convention is `<platform>/<env>/terraform.tfstate`. Copying local state to object storage is a backup, not remote backend configuration or state locking.
+- Omitting `--env` processes every env for the platform. Downloads overwrite the local `terraform.tfvars`.
+- Uploads skip missing local tfvars. The script does not sync state or backend configuration; the sync bucket is configured independently of the Terraform backend.
+- Object keys are `<platform>/<env>/terraform.tfvars` for all three storage types. Use `--dry-run` to preview without transferring files; R2 previews need no credentials and do not invoke `cf`.
+- S3 credentials fall back to the AWS default chain; GCS uses `GOOGLE_APPLICATION_CREDENTIALS` when supplied, otherwise the active gcloud account. R2 uses `cf auth login` or `CLOUDFLARE_API_TOKEN`; `CLOUDFLARE_ACCOUNT_ID` selects the account when needed. R2 downloads use a temporary file and replace tfvars only on success.
+- `--endpoint` is for S3 only (ignored for GCS); R2 rejects it because `cf` handles API endpoints and does not use S3 access keys. Terraform's R2 S3 backend configuration is independent of this script's cf authentication.
+- GCP backend prefix convention is `gcp/<env>`; AWS/OpenStack/Vultr backend key convention is `<platform>/<env>/terraform.tfstate`. Copying local state to object storage is a backup, not remote backend configuration or state locking.
+- GCP `logic3579` is an exception: it uses the S3-compatible backend configuration from AWS `logic3579`, with key `gcp/logic3579/terraform.tfstate`. Backend credentials remain separate from Google provider authentication.
+
+When changing backends, use `init -migrate-state` to move existing state, or
+`init -reconfigure` if there is no state to preserve. Changing the configuration
+alone does not migrate state. Keep local tfvars, backend files, state, and CLI
+caches out of commits. Usage examples are centralized in [README.md](README.md#sync-terraformtfvars).
 
 ## Key Terraform patterns across all platforms
 
@@ -156,7 +172,7 @@ Entire resources are created with `count = <condition> ? 1 : 0` or `for_each = <
 
 ### Proxmox
 - Provider pinned `~> 0.104.0` — DO NOT BUMP. Network resource name is `proxmox_virtual_environment_network_linux_bridge` (will change when bumped)
-- State is local in the current configuration. Back up `terraform.tfstate` via `tfvars-sync.sh --file terraform.tfstate`; shared backend adoption is a separate configuration/migration task.
+- State is local in the current configuration. Back up `terraform.tfstate` separately; `tfvars-sync.sh` only syncs tfvars. Shared backend adoption is a separate configuration/migration task.
 - API token auth is preferred; username/password and optional SSH configuration are available. Storage downloads expose IDs, but root compute currently receives `var.vms` directly rather than automatically resolving storage output names.
 
 ### OpenStack
@@ -168,7 +184,7 @@ Entire resources are created with `count = <condition> ? 1 : 0` or `for_each = <
 - `VULTR_API_KEY` env var only — setting `api_key` in tfvars to ANYTHING (including a placeholder) overrides the env-var fallback. The variable must stay `null`
 - `vultr_vpc` v1 is used (`vultr_vpc2` is deprecated upstream — do not "upgrade")
 - Root passes VPC/firewall-group ID maps to compute; the compute module resolves instance references including SSH-key/startup-script names using its own resources.
-- Local backend — back up state via `tfvars-sync.sh --file terraform.tfstate`
+- S3-compatible backend — `logic3579` uses the same R2 configuration as AWS `logic3579`, with key `vultr/logic3579/terraform.tfstate`. Backend credentials are separate from `VULTR_API_KEY`.
 
 ## What this repo does NOT have
 

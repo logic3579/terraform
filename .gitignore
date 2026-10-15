@@ -1,6 +1,9 @@
 # Local .terraform directories
 .terraform/
 
+# Local Cloudflare CLI account cache and runtime state
+.cloudflare/
+
 # .tfstate files
 *.tfstate
 *.tfstate.*

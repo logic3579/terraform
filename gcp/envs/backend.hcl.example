@@ -1,12 +1,48 @@
-# Terraform gcs backend.
+# Terraform backend examples for GCP environments.
 #
-# Copy this file to backend.hcl in your env directory (e.g.,
-# gcp/envs/<env>/backend.hcl) and fill in the placeholders below.
+# Choose ONE section below for gcp/envs/<env>/backend.hcl and fill in
+# its placeholders. Do not combine GCS and S3 attributes in the same file.
+# Match the backend type in that environment's main.tf, then run:
+#   terraform init -backend-config=backend.hcl
 # All backend.hcl files are gitignored via the **/backend.hcl rule.
+#
+# === Option 1: GCS (active example) ===
+# In main.tf's terraform block: backend "gcs" {}
 #
 # Auth: uses Application Default Credentials. Run one of:
 #   gcloud auth application-default login          # interactive
 #   export GOOGLE_APPLICATION_CREDENTIALS=<key>    # service account JSON key
 
 bucket = "<your-tfstate-bucket>" # e.g. "myproject-terraform-state"
-prefix = "gcp/<env>"             # state object prefix, e.g. "gcp/dev"
+prefix = "gcp/<env>"            # state object prefix, e.g. "gcp/dev"
+
+# === Option 2: S3-compatible storage / Cloudflare R2 (commented example) ===
+# In main.tf's terraform block: backend "s3" {}
+#
+# To use this section, remove the active GCS attributes above and uncomment
+# the S3 configuration below. S3 uses an object key, not a GCS prefix.
+# Example for logic3579: key = "gcp/logic3579/terraform.tfstate"
+# Backend credentials are separate from GCP provider authentication.
+# Obtain R2 S3 credentials with read/write access to the state bucket.
+# Keep real credentials only in the gitignored backend.hcl, or omit the
+# access_key/secret_key attributes and export AWS_ACCESS_KEY_ID and
+# AWS_SECRET_ACCESS_KEY instead.
+#
+# bucket = "<your-r2-bucket-name>"
+# key    = "gcp/<env>/terraform.tfstate"
+# region = "auto"
+#
+# endpoints = {
+#   s3 = "https://<CLOUDFLARE_ACCOUNT_ID>.r2.cloudflarestorage.com"
+# }
+#
+# access_key = "<R2_ACCESS_KEY_ID>"
+# secret_key = "<R2_SECRET_ACCESS_KEY>"
+#
+# # R2 doesn't implement all AWS checks; these settings are for R2.
+# skip_credentials_validation = true
+# skip_region_validation      = true
+# skip_metadata_api_check     = true
+# skip_requesting_account_id  = true
+# skip_s3_checksum            = true
+# use_path_style              = true

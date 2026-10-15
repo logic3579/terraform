@@ -10,7 +10,8 @@ Terraform configurations for provisioning infrastructure on **GCP**, **AWS**, **
 ├── aws/         # Amazon Web Services — 6 modules (network, iam, compute, rds, lambda, budget)
 ├── proxmox/     # Proxmox VE — basic VM/network/storage (bpg/proxmox)
 ├── openstack/   # OpenStack — basic compute/network/storage (terraform-provider-openstack)
-└── vultr/       # Vultr — VPC + firewall groups + compute instances (vultr/vultr)
+├── vultr/       # Vultr — VPC + firewall groups + compute instances (vultr/vultr)
+└── scripts/     # terraform.tfvars upload/download for S3, R2, and GCS
 ```
 
 Each platform follows the same three-layer architecture:
@@ -31,35 +32,62 @@ Each platform follows the same three-layer architecture:
 
 ## Usage
 
-All commands run from the env directory.
+Run Terraform commands from the target env directory. The tracked environments
+and state backends are:
+
+| Platform | Environments | Backend | State prefix or key |
+|----------|--------------|---------|---------------------|
+| GCP | `dev`, `base` | GCS | `gcp/<env>` prefix |
+| GCP | `logic3579` | S3-compatible R2 | `gcp/logic3579/terraform.tfstate` |
+| AWS | `dev`, `logic3579` | S3-compatible | `aws/<env>/terraform.tfstate` |
+| Proxmox | `dev` | Local | `terraform.tfstate` in the env directory |
+| OpenStack | `dev` | S3-compatible Swift | `openstack/<env>/terraform.tfstate` |
+| Vultr | `logic3579` | S3-compatible R2 | `vultr/logic3579/terraform.tfstate` |
+
+For remote backends, copy `<platform>/envs/backend.hcl.example` to the env
+directory as `backend.hcl` and fill in the bucket, unique state path, and
+authentication settings. The GCP template has separate GCS and R2 examples;
+choose the section matching the backend type in the env's `main.tf`.
+`backend.hcl` is **not loaded automatically**: pass
+`terraform init -backend-config=backend.hcl` explicitly.
+
+`backend.hcl` and `terraform.tfvars` are gitignored and must be supplied on each
+checkout. GCP, AWS, and Vultr `logic3579` can share the R2 bucket and endpoint
+while keeping the distinct state keys above. Backend credentials are separate
+from each cloud provider's credentials.
+
+When moving an existing local state to a remote backend, use
+`terraform init -migrate-state -backend-config=backend.hcl`. When there is no
+state to migrate, use `terraform init -reconfigure -backend-config=backend.hcl`
+to replace a previously initialized backend configuration.
 
 ### GCP
 
 ```bash
 cd gcp/envs/dev
 cp ../terraform.tfvars.example terraform.tfvars   # then edit
+cp ../backend.hcl.example backend.hcl             # then edit; select GCS
 terraform init -backend-config=backend.hcl
 terraform plan
 terraform apply
 ```
+
+`gcp/envs/logic3579/` uses the same root module with an S3 backend. Set
+`project_id = "logic3579"` in its local tfvars. The `env` value is independent
+of the directory name and accepts `base`, `dev`, `test`, `uat`, or `prod`.
+The initial location values follow `base`: `asia-east2` / `asia-east2-a`.
+Resource lists default to empty; add only the resources you intend to manage.
 
 ### AWS
 
 ```bash
 cd aws/envs/dev
 cp ../terraform.tfvars.example terraform.tfvars   # then edit
+cp ../backend.hcl.example backend.hcl             # R2 example; adapt for AWS S3
 terraform init -backend-config=backend.hcl
 terraform plan
 terraform apply
 ```
-
-The `aws/envs/` directory also includes `backend.hcl.example` — a template for
-pointing the S3 backend at **Cloudflare R2** (any S3-compatible store works
-the same way). Equivalent templates exist for the other remote-backend
-platforms: `gcp/envs/backend.hcl.example`, `openstack/envs/backend.hcl.example`.
-All `backend.hcl` files are gitignored via the `**/backend.hcl` rule, so
-credentials embedded in them are never committed — copy the example, fill in
-your values, and `terraform init -backend-config=backend.hcl`.
 
 ### Proxmox VE
 
@@ -76,6 +104,7 @@ terraform apply
 ```bash
 cd openstack/envs/dev
 cp ../terraform.tfvars.example terraform.tfvars   # then edit
+cp ../backend.hcl.example backend.hcl             # then edit
 
 # State backend uses Swift's S3-compatible API
 export AWS_ACCESS_KEY_ID=...
@@ -92,17 +121,48 @@ terraform apply
 export VULTR_API_KEY=...                          # provider reads this env var natively
 cd vultr/envs/logic3579
 cp ../terraform.tfvars.example terraform.tfvars   # then edit
-terraform init                                    # local backend
+cp ../backend.hcl.example backend.hcl             # then fill in backend values
+terraform init -backend-config=backend.hcl
 terraform plan
 terraform apply
 ```
 
-State is kept local. To back up `terraform.tfstate` (and `terraform.tfvars`) to
-remote storage, use `scripts/tfvars-sync.sh` with `--file terraform.tfstate`.
-The script supports `--storage s3`, `--storage r2` (S3-compatible via
-`--endpoint`), and `--storage gcs` (`gcloud storage cp`, picks up
-`GOOGLE_APPLICATION_CREDENTIALS` when set, else the active `gcloud auth`
-account).
+Leave `api_key` unset in tfvars so the provider reads `VULTR_API_KEY`.
+Export it in the same shell that runs `terraform plan` or `apply`.
+
+## Sync terraform.tfvars
+
+Run `scripts/tfvars-sync.sh` from the repository root to upload or download only
+`terraform.tfvars`. Objects use `<platform>/<env>/terraform.tfvars`; the default
+bucket is `terraform-state`. Omit `--env` to process every env for that platform.
+
+| Storage | CLI | Authentication |
+|---------|-----|----------------|
+| `s3` | `aws s3 cp` | AWS default credential chain, or `S3_ACCESS_KEY` and `S3_SECRET_ACCESS_KEY` |
+| `r2` | `cf r2 objects put/get` | `cf auth login` or `CLOUDFLARE_API_TOKEN`; `CLOUDFLARE_ACCOUNT_ID` selects the account |
+| `gcs` | `gcloud storage cp` | `GOOGLE_APPLICATION_CREDENTIALS`, otherwise the active gcloud account |
+
+R2 requires the official Cloudflare `cf` CLI with R2 object read/write access.
+Its authentication is independent of Terraform's S3 backend credentials; see
+[Cloudflare authentication](https://developers.cloudflare.com/cf/ci/#provide-credentials).
+`--endpoint` is optional for S3, rejected for R2, and ignored for GCS.
+
+```bash
+# Preview without transferring files or invoking cf; R2 preview needs no login.
+rtk proxy ./scripts/tfvars-sync.sh upload --platform vultr --env logic3579 --storage r2 --dry-run
+
+# After cf authentication, upload or download one environment.
+rtk proxy ./scripts/tfvars-sync.sh upload --platform vultr --env logic3579 --storage r2
+rtk proxy ./scripts/tfvars-sync.sh download --platform vultr --env logic3579 --storage r2
+
+# Sync all GCP environments to a selected GCS bucket.
+rtk proxy ./scripts/tfvars-sync.sh upload --platform gcp --storage gcs --bucket my-tfvars-bucket
+```
+
+Downloads overwrite the local tfvars; preserve local edits first. R2 downloads
+write to a temporary file and replace tfvars only after success. Missing local
+tfvars are skipped on upload. The script does not sync Terraform state or
+backend configuration, and the sync bucket may differ from the state bucket.
 
 ## Resources covered
 
@@ -126,5 +186,6 @@ terraform destroy
 
 - Always `terraform plan` before applying.
 - `*.tfvars` and `*.tfstate` are gitignored — use `<platform>/envs/terraform.tfvars.example` as the template.
+- `.cloudflare/` is local CLI cache and is also gitignored. Keep provider lockfiles tracked.
 - Be mindful of cloud costs.
 - See [AGENTS.md](AGENTS.md) for project conventions and module architecture.

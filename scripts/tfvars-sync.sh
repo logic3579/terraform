@@ -1,17 +1,19 @@
 #!/bin/bash
-# Sync env files between an env directory and remote object storage:
+# Sync terraform.tfvars between an env directory and remote object storage:
 #   s3  — AWS S3  via `aws s3 cp`
-#   r2  — Cloudflare R2 via `aws s3 cp --endpoint-url=...`
+#   r2  — Cloudflare R2 via `cf r2 objects put/get`
 #   gcs — Google Cloud Storage via `gcloud storage cp`
 #
 # Remote object key is fixed by convention:
-#   s3://<bucket>/<platform>/<env>/<file>   (s3, r2)
-#   gs://<bucket>/<platform>/<env>/<file>   (gcs)
+#   s3://<bucket>/<platform>/<env>/terraform.tfvars   (s3)
+#   r2://<bucket>/<platform>/<env>/terraform.tfvars   (r2, display only)
+#   gs://<bucket>/<platform>/<env>/terraform.tfvars   (gcs)
 #
 # Auth:
 #   s3  : S3_ACCESS_KEY / S3_SECRET_ACCESS_KEY env vars (optional —
 #         falls back to the AWS default chain: AWS_PROFILE / AWS creds / IMDS)
-#   r2  : S3_ACCESS_KEY / S3_SECRET_ACCESS_KEY env vars (required)
+#   r2  : `cf auth login` or CLOUDFLARE_API_TOKEN; set CLOUDFLARE_ACCOUNT_ID
+#         when account selection is needed. No S3 credentials or endpoint.
 #   gcs : GOOGLE_APPLICATION_CREDENTIALS env var (optional — path to a
 #         service account JSON key; takes precedence). Falls back to the
 #         active `gcloud auth list` account when unset.
@@ -26,7 +28,6 @@ ACTION=""
 PLATFORM=""
 ENV=""
 STORAGE=""
-FILE="terraform.tfvars"
 BUCKET="terraform-state"
 ENDPOINT=""
 DRY_RUN=false
@@ -46,21 +47,21 @@ Required:
 
 Options:
   --env      NAME                specific env (e.g. dev, prod); omit for all envs of the platform
-  --file     FILE                filename inside the env dir to sync (default: terraform.tfvars)
-                                 e.g. terraform.tfstate, terraform.tfvars.json
   --bucket   NAME                bucket name (default: terraform-state)
-  --endpoint URL                 S3 endpoint URL. Required for --storage r2; optional for --storage s3.
-                                 Ignored for --storage gcs. e.g. https://<account>.r2.cloudflarestorage.com
-  --dry-run                      print the planned cp command(s) without executing
+  --endpoint URL                 optional custom endpoint for --storage s3 only
+                                 Not supported for r2; ignored for gcs.
+  --dry-run                      print the planned transfer command(s) without executing
   -h, --help                     show this help
 
 Remote object key:
-  s3://<bucket>/<platform>/<env>/<file>   (s3, r2)
-  gs://<bucket>/<platform>/<env>/<file>   (gcs)
+  s3://<bucket>/<platform>/<env>/terraform.tfvars   (s3)
+  r2://<bucket>/<platform>/<env>/terraform.tfvars   (r2, display only)
+  gs://<bucket>/<platform>/<env>/terraform.tfvars   (gcs)
 
 Credentials:
   s3  : S3_ACCESS_KEY / S3_SECRET_ACCESS_KEY env vars (optional — falls back to AWS default chain)
-  r2  : S3_ACCESS_KEY / S3_SECRET_ACCESS_KEY env vars (required)
+  r2  : cf auth login, or CLOUDFLARE_API_TOKEN; CLOUDFLARE_ACCOUNT_ID selects the account
+        Requires the Cloudflare cf CLI and R2 object read/write permissions.
   gcs : GOOGLE_APPLICATION_CREDENTIALS env var (optional — path to a service account
         JSON key; takes precedence). Falls back to the active gcloud auth account.
 
@@ -68,16 +69,12 @@ Examples:
   # Upload one aws env tfvars to AWS S3 (uses AWS default credential chain)
   $(basename "$0") upload --platform aws --storage s3 --env dev --bucket my-tfstate
 
-  # Back up vultr local state + tfvars to R2
-  export S3_ACCESS_KEY=...   S3_SECRET_ACCESS_KEY=...
-  $(basename "$0") upload --platform vultr --env prod --storage r2 \\
-      --file terraform.tfstate --endpoint https://<account>.r2.cloudflarestorage.com
-  $(basename "$0") upload --platform vultr --env prod --storage r2 \\
-      --file terraform.tfvars  --endpoint https://<account>.r2.cloudflarestorage.com
+  # Back up vultr tfvars to R2
+  cf auth login
+  $(basename "$0") upload --platform vultr --env logic3579 --storage r2
 
   # Download all proxmox envs from R2
-  $(basename "$0") download --platform proxmox --storage r2 \\
-      --endpoint https://<account>.r2.cloudflarestorage.com
+  $(basename "$0") download --platform proxmox --storage r2
 
   # Upload all gcp envs' tfvars to GCS (uses active gcloud account)
   $(basename "$0") upload --platform gcp --storage gcs --bucket terraform-state
@@ -98,7 +95,6 @@ parse_args() {
       --platform) PLATFORM="${2:-}"; shift 2 ;;
       --env)      ENV="${2:-}";      shift 2 ;;
       --storage)  STORAGE="${2:-}";  shift 2 ;;
-      --file)     FILE="${2:-}";     shift 2 ;;
       --bucket)   BUCKET="${2:-}";   shift 2 ;;
       --endpoint) ENDPOINT="${2:-}"; shift 2 ;;
       --dry-run)  DRY_RUN=true;      shift ;;
@@ -112,11 +108,6 @@ parse_args() {
 
   if [[ ! "$ACTION" =~ ^(upload|download)$ ]]; then
     echo -e "${RED}[ERROR]${NC} action must be 'upload' or 'download' (got: '$ACTION')"
-    usage
-  fi
-
-  if [[ -z "$FILE" ]]; then
-    echo -e "${RED}[ERROR]${NC} --file must not be empty"
     usage
   fi
 
@@ -145,64 +136,93 @@ parse_args() {
     usage
   fi
 
-  if [[ "$STORAGE" == "r2" && -z "$ENDPOINT" ]]; then
-    echo -e "${RED}[ERROR]${NC} --endpoint is required when --storage r2"
+  if [[ "$STORAGE" == "r2" && -n "$ENDPOINT" ]]; then
+    echo -e "${RED}[ERROR]${NC} --storage r2 uses the cf CLI; remove --endpoint and authenticate with cf auth login or CLOUDFLARE_API_TOKEN"
     usage
   fi
 }
 
 # ---- remote URI ---------------------------------------------------------
 compute_remote_uri() {
-  local env="$1" filename="$2"
+  local env="$1"
   case "$STORAGE" in
-    gcs) echo "gs://${BUCKET}/${PLATFORM}/${env}/${filename}" ;;
-    *)   echo "s3://${BUCKET}/${PLATFORM}/${env}/${filename}" ;;
+    r2)  echo "r2://${BUCKET}/${PLATFORM}/${env}/terraform.tfvars" ;;
+    gcs) echo "gs://${BUCKET}/${PLATFORM}/${env}/terraform.tfvars" ;;
+    *)   echo "s3://${BUCKET}/${PLATFORM}/${env}/terraform.tfvars" ;;
   esac
 }
 
 # ---- cp runner ----------------------------------------------------------
 run_cp() {
   local src="$1" dst="$2"
-  local endpoint_arg=() region_arg=()
+  local endpoint_arg=()
 
   [[ -n "$ENDPOINT" ]] && endpoint_arg=(--endpoint-url="$ENDPOINT")
 
   case "$STORAGE" in
     r2)
-      # R2 only accepts canonical region names (wnam/enam/weur/eeur/apac/oc/auto).
-      # Force --region auto so the local AWS profile's region doesn't leak through.
-      region_arg=(--region auto)
-
-      if [[ -z "${S3_ACCESS_KEY:-}" || -z "${S3_SECRET_ACCESS_KEY:-}" ]]; then
-        echo -e "  ${RED}[ERROR]${NC} S3_ACCESS_KEY and S3_SECRET_ACCESS_KEY env vars are required for --storage r2"
-        return 1
+      local object_key
+      local command_args=()
+      if [[ "$ACTION" == "upload" ]]; then
+        object_key="${dst#r2://${BUCKET}/}"
+        command_args=(cf r2 objects put "$object_key" --bucket-name "$BUCKET" --file "$src" --quiet)
+      else
+        object_key="${src#r2://${BUCKET}/}"
+        command_args=(cf r2 objects get "$object_key" --bucket-name "$BUCKET" --quiet)
       fi
 
       if $DRY_RUN; then
-        echo -e "  ${CYAN}[DRY-RUN]${NC} AWS_ACCESS_KEY_ID=${S3_ACCESS_KEY:0:6}… AWS_SECRET_ACCESS_KEY=… \\"
-        echo -e "                aws s3 cp ${region_arg[*]} ${endpoint_arg[*]} \"$src\" \"$dst\""
+        printf '  %b[DRY-RUN]%b ' "$CYAN" "$NC"
+        printf '%q ' "${command_args[@]}"
+        if [[ "$ACTION" == "download" ]]; then
+          printf '> %q (via temporary file)' "$dst"
+        fi
+        printf '\n'
+        return 0
+      fi
+
+      if ! command -v cf >/dev/null 2>&1; then
+        echo -e "  ${RED}[ERROR]${NC} Cloudflare cf CLI is required for --storage r2"
+        return 1
+      fi
+
+      if [[ "$ACTION" == "upload" ]]; then
+        "${command_args[@]}"
       else
-        AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY" AWS_SECRET_ACCESS_KEY="$S3_SECRET_ACCESS_KEY" \
-          aws s3 cp "${region_arg[@]}" "${endpoint_arg[@]}" "$src" "$dst"
+        # cf get writes raw object bytes to stdout. Replace tfvars only after
+        # a successful download so API/auth errors cannot truncate the file.
+        local temp_file
+        if ! temp_file=$(mktemp "${dst}.download.XXXXXX"); then
+          echo -e "  ${RED}[ERROR]${NC} unable to create a temporary download file"
+          return 1
+        fi
+        if "${command_args[@]}" > "$temp_file"; then
+          if mv -- "$temp_file" "$dst"; then
+            return 0
+          fi
+        fi
+        rm -f -- "$temp_file"
+        return 1
       fi
       ;;
 
     s3)
       # If S3_ACCESS_KEY/SECRET are set, use them; otherwise fall back to the
       # AWS default credential chain (AWS_PROFILE, ~/.aws/credentials, IMDS, etc).
+      # Guard empty array expansion for macOS Bash 3.2 with set -u.
       if [[ -n "${S3_ACCESS_KEY:-}" && -n "${S3_SECRET_ACCESS_KEY:-}" ]]; then
         if $DRY_RUN; then
           echo -e "  ${CYAN}[DRY-RUN]${NC} AWS_ACCESS_KEY_ID=${S3_ACCESS_KEY:0:6}… AWS_SECRET_ACCESS_KEY=… \\"
           echo -e "                aws s3 cp ${endpoint_arg[*]:-} \"$src\" \"$dst\""
         else
           AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY" AWS_SECRET_ACCESS_KEY="$S3_SECRET_ACCESS_KEY" \
-            aws s3 cp "${endpoint_arg[@]}" "$src" "$dst"
+            aws s3 cp ${endpoint_arg[@]+"${endpoint_arg[@]}"} "$src" "$dst"
         fi
       else
         if $DRY_RUN; then
           echo -e "  ${CYAN}[DRY-RUN]${NC} aws s3 cp ${endpoint_arg[*]:-} \"$src\" \"$dst\""
         else
-          aws s3 cp "${endpoint_arg[@]}" "$src" "$dst"
+          aws s3 cp ${endpoint_arg[@]+"${endpoint_arg[@]}"} "$src" "$dst"
         fi
       fi
       ;;
@@ -244,15 +264,15 @@ run_cp() {
 process_env() {
   local env="$1"
   local env_dir="$PROJECT_ROOT/$PLATFORM/envs/$env"
-  local local_file="$env_dir/$FILE"
-  local rel_local="$PLATFORM/envs/$env/$FILE"
+  local local_file="$env_dir/terraform.tfvars"
+  local rel_local="$PLATFORM/envs/$env/terraform.tfvars"
 
   local remote_uri
-  remote_uri=$(compute_remote_uri "$env" "$FILE")
+  remote_uri=$(compute_remote_uri "$env")
 
   if [[ "$ACTION" == "upload" ]]; then
     if [[ ! -f "$local_file" ]]; then
-      echo -e "${YELLOW}[SKIP]${NC} $env: no $FILE to upload"
+      echo -e "${YELLOW}[SKIP]${NC} $env: no terraform.tfvars to upload"
       return 0
     fi
     echo -e "${GREEN}[UPLOAD]${NC} $env: $rel_local → $remote_uri"
@@ -301,7 +321,7 @@ main() {
   $DRY_RUN && dry_marker=" ${CYAN}[DRY-RUN]${NC}"
 
   echo "==================================================="
-  echo -e "tfvars sync — ${action_upper}  platform=${PLATFORM}  storage=${STORAGE}  bucket=${BUCKET}  file=${FILE}${dry_marker}"
+  echo -e "tfvars sync — ${action_upper}  platform=${PLATFORM}  storage=${STORAGE}  bucket=${BUCKET}${dry_marker}"
   echo "==================================================="
   echo
 

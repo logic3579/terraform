@@ -1,0 +1,37 @@
+# Terraform s3 backend pointed at Cloudflare R2 (S3-compatible).
+#
+# Copy this file to backend.hcl in your env directory (e.g.,
+# vultr/envs/<env>/backend.hcl) and fill in the placeholders below.
+# All backend.hcl files are gitignored via the **/backend.hcl rule, so
+# credentials embedded here won't be committed.
+#
+# To create R2 API credentials:
+#   1. Cloudflare dashboard → R2 → Manage R2 API Tokens
+#   2. Create a token with "Object Read & Write" permission on your bucket
+#   3. Paste the access key / secret key below
+
+bucket = "<your-r2-bucket-name>"         # e.g. "my-terraform-state"
+key    = "vultr/<env>/terraform.tfstate" # state object key
+region = "auto"                          # R2 doesn't use AWS regions; "auto" is required
+
+endpoints = {
+  s3 = "https://<CLOUDFLARE_ACCOUNT_ID>.r2.cloudflarestorage.com"
+}
+
+# Backend credentials are separate from the Vultr provider VULTR_API_KEY.
+# Alternatively, omit access_key/secret_key below and export
+# AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY for the backend.
+access_key = "<R2_ACCESS_KEY_ID>"
+secret_key = "<R2_SECRET_ACCESS_KEY>"
+
+# R2 doesn't implement all AWS-isms — disable the corresponding checks.
+skip_credentials_validation = true
+skip_region_validation      = true
+skip_metadata_api_check     = true
+skip_requesting_account_id  = true
+skip_s3_checksum            = true
+use_path_style              = true
+
+# R2 has no DynamoDB-equivalent lock table. Terraform >= 1.10 supports native
+# S3 lockfile via S3 conditional writes (which R2 supports). Uncomment to opt in:
+# use_lockfile = true
