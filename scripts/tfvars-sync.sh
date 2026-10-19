@@ -1,5 +1,6 @@
 #!/bin/bash
-# Sync terraform.tfvars or backend.hcl between a local project and object storage:
+# Sync backend.hcl, main.tf and terraform.tfvars (or one --file) between local
+# projects and object storage.
 #   s3  — AWS S3  via `aws s3 cp`
 #   r2  — Cloudflare R2 via `cf r2 objects put/get`
 #   gcs — Google Cloud Storage via `gcloud storage cp`
@@ -28,7 +29,7 @@ ACTION=""
 PLATFORM=""
 ENV=""
 STORAGE=""
-SYNC_FILE="terraform.tfvars"
+SYNC_FILE=""
 BUCKET="terraform-state"
 ENDPOINT=""
 DRY_RUN=false
@@ -47,7 +48,8 @@ Required:
   --storage  NAME                s3 | r2 | gcs
 
 Options:
-  --file     NAME                terraform.tfvars (default) | backend.hcl
+  --file     PATH                sync only this project-relative file
+                                 Default: backend.hcl, main.tf, terraform.tfvars
   --env      NAME                project directory (e.g. example, logic3579)
                                  Omit for all local projects, including gitignored ones.
   --bucket   NAME                bucket name (default: terraform-state)
@@ -69,10 +71,10 @@ Credentials:
         JSON key; takes precedence). Falls back to the active gcloud auth account.
 
 Examples:
-  # Upload one aws project's tfvars to AWS S3 (uses AWS default credential chain)
+  # Upload one aws project's files to AWS S3 (uses AWS default credential chain)
   $(basename "$0") upload --platform aws --storage s3 --env example --bucket my-tfstate
 
-  # Back up vultr tfvars to R2
+  # Back up vultr backend.hcl, main.tf and terraform.tfvars to R2
   cf auth login
   $(basename "$0") upload --platform vultr --env logic3579 --storage r2
 
@@ -80,10 +82,10 @@ Examples:
   $(basename "$0") upload --platform vultr --env logic3579 --storage r2 --file backend.hcl
   $(basename "$0") download --platform vultr --env logic3579 --storage r2 --file backend.hcl
 
-  # Download all proxmox envs from R2
-  $(basename "$0") download --platform proxmox --storage r2
+  # Download proxmox tfvars from R2 (no backend.hcl on this platform)
+  $(basename "$0") download --platform proxmox --storage r2 --file terraform.tfvars
 
-  # Upload all gcp envs' tfvars to GCS (uses active gcloud account)
+  # Upload all gcp envs' files to GCS (uses active gcloud account)
   $(basename "$0") upload --platform gcp --storage gcs --bucket terraform-state
 
   # Preview without executing
@@ -101,7 +103,7 @@ parse_args() {
     case "$1" in
       --file)
         if [[ -z "${2:-}" || "${2:-}" == --* ]]; then
-          echo -e "${RED}[ERROR]${NC} --file requires terraform.tfvars or backend.hcl"
+          echo -e "${RED}[ERROR]${NC} --file requires a project-relative file path"
           exit 1
         fi
         SYNC_FILE="$2"; shift 2 ;;
@@ -129,8 +131,13 @@ parse_args() {
     usage
   fi
 
-  if [[ "$SYNC_FILE" != "terraform.tfvars" && "$SYNC_FILE" != "backend.hcl" ]]; then
-    echo -e "${RED}[ERROR]${NC} --file must be terraform.tfvars or backend.hcl (got: '$SYNC_FILE')"
+  if [[ -n "$SYNC_FILE" ]] && ! valid_file_path "$SYNC_FILE"; then
+    echo -e "${RED}[ERROR]${NC} --file must be a relative file path excluding outputs.tf and variables.tf (got: '$SYNC_FILE')"
+    exit 1
+  fi
+
+  if [[ "$PLATFORM" == */* || "$ENV" == */* || "$PLATFORM" == . || "$PLATFORM" == .. || "$ENV" == . || "$ENV" == .. ]]; then
+    echo -e "${RED}[ERROR]${NC} platform and env must be directory names"
     exit 1
   fi
 
@@ -162,11 +169,11 @@ parse_args() {
 
 # ---- remote URI ---------------------------------------------------------
 compute_remote_uri() {
-  local env="$1"
+  local env="$1" file="$2"
   case "$STORAGE" in
-    r2)  echo "r2://${BUCKET}/${PLATFORM}/${env}/${SYNC_FILE}" ;;
-    gcs) echo "gs://${BUCKET}/${PLATFORM}/${env}/${SYNC_FILE}" ;;
-    *)   echo "s3://${BUCKET}/${PLATFORM}/${env}/${SYNC_FILE}" ;;
+    r2)  printf 'r2://%s/%s/%s/%s\n' "$BUCKET" "$PLATFORM" "$env" "$file" ;;
+    gcs) printf 'gs://%s/%s/%s/%s\n' "$BUCKET" "$PLATFORM" "$env" "$file" ;;
+    *)   printf 's3://%s/%s/%s/%s\n' "$BUCKET" "$PLATFORM" "$env" "$file" ;;
   esac
 }
 
@@ -182,10 +189,10 @@ run_cp() {
       local object_key
       local command_args=()
       if [[ "$ACTION" == "upload" ]]; then
-        object_key="${dst#r2://${BUCKET}/}"
+        object_key="${dst#r2://"${BUCKET}"/}"
         command_args=(cf r2 objects put "$object_key" --bucket-name "$BUCKET" --file "$src" --quiet)
       else
-        object_key="${src#r2://${BUCKET}/}"
+        object_key="${src#r2://"${BUCKET}"/}"
         command_args=(cf r2 objects get "$object_key" --bucket-name "$BUCKET" --quiet)
       fi
 
@@ -207,7 +214,7 @@ run_cp() {
       if [[ "$ACTION" == "upload" ]]; then
         "${command_args[@]}"
       else
-        # cf get writes raw object bytes to stdout; process_env supplies a
+        # cf get writes raw object bytes to stdout; process_file supplies a
         # temporary destination and replaces the local file only on success.
         "${command_args[@]}" > "$dst"
       fi
@@ -267,19 +274,44 @@ run_cp() {
   esac
 }
 
-# ---- per-env worker -----------------------------------------------------
-process_env() {
-  local env="$1"
+# ---- file selection -----------------------------------------------------
+valid_file_path() {
+  case "$1" in
+    ""|/*|*/|.|..|./*|../*|*/./*|*/../*|*/.|*/..|*//*|outputs.tf|variables.tf) return 1 ;;
+  esac
+}
+
+# Reject symlinks in every component, including directories, before writing.
+safe_local_path() {
+  local path="$1"
+  while [[ "$path" != "$PROJECT_ROOT" && "$path" != / ]]; do
+    [[ ! -L "$path" ]] || return 1
+    path=$(dirname "$path")
+  done
+}
+
+# ---- per-file worker ----------------------------------------------------
+process_file() {
+  local env="$1" file="$2"
   local env_dir="$PROJECT_ROOT/$PLATFORM/envs/$env"
-  local local_file="$env_dir/$SYNC_FILE"
-  local rel_local="$PLATFORM/envs/$env/$SYNC_FILE"
+  local local_file="$env_dir/$file"
+  local rel_local="$PLATFORM/envs/$env/$file"
+
+  if ! valid_file_path "$file"; then
+    echo -e "${RED}[ERROR]${NC} unsafe file path: $file"
+    return 1
+  fi
+  if ! safe_local_path "$local_file"; then
+    echo -e "${YELLOW}[SKIP]${NC} $rel_local: symlink path"
+    return 0
+  fi
 
   local remote_uri
-  remote_uri=$(compute_remote_uri "$env")
+  remote_uri="$(compute_remote_uri "$env" "")$file"
 
   if [[ "$ACTION" == "upload" ]]; then
     if [[ ! -f "$local_file" ]]; then
-      echo -e "${YELLOW}[SKIP]${NC} $env: no $SYNC_FILE to upload"
+      echo -e "${YELLOW}[SKIP]${NC} $env: no $file to upload"
       return 0
     fi
     echo -e "${GREEN}[UPLOAD]${NC} $env: $rel_local → $remote_uri"
@@ -289,6 +321,11 @@ process_env() {
     if $DRY_RUN; then
       run_cp "$remote_uri" "$local_file"
       return $?
+    fi
+
+    if [[ -d "$local_file" ]] || ! mkdir -p -- "$(dirname "$local_file")"; then
+      echo -e "  ${RED}[ERROR]${NC} invalid download destination: $rel_local"
+      return 1
     fi
 
     # Download into the same directory so a failed transfer leaves the existing
@@ -306,6 +343,20 @@ process_env() {
     rm -f -- "$temp_file"
     return 1
   fi
+}
+
+# ---- per-env worker -----------------------------------------------------
+process_env() {
+  local env="$1" file failed=0
+  local files=(backend.hcl main.tf terraform.tfvars)
+  [[ -z "$SYNC_FILE" ]] || files=("$SYNC_FILE")
+
+  for file in "${files[@]}"; do
+    if ! process_file "$env" "$file"; then
+      failed=1
+    fi
+  done
+  return "$failed"
 }
 
 # ---- env discovery ------------------------------------------------------
@@ -346,7 +397,7 @@ main() {
   $DRY_RUN && dry_marker=" ${CYAN}[DRY-RUN]${NC}"
 
   echo "==================================================="
-  echo -e "config sync — ${action_upper}  platform=${PLATFORM}  storage=${STORAGE}  bucket=${BUCKET}  file=${SYNC_FILE}${dry_marker}"
+  echo -e "project sync — ${action_upper}  platform=${PLATFORM}  storage=${STORAGE}  bucket=${BUCKET}  file=${SYNC_FILE:-backend.hcl,main.tf,terraform.tfvars}${dry_marker}"
   echo "==================================================="
   echo
 

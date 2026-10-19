@@ -199,7 +199,7 @@ Back up the project configuration after setup and whenever it changes.
 ## Local projects and manual backups
 
 Back up `terraform.tfvars` and `backend.hcl` outside Git, either manually or
-with separate [sync commands](#sync-project-configuration). On another machine,
+with the [sync script](#sync-project-configuration). On another machine,
 recreate only the project entrypoint and symlinks first. Do not generate fresh
 input/backend values for an existing project. For example, from the repository
 root, after setting `platform` and `project` to the original names:
@@ -236,13 +236,19 @@ Ignored project files stay on disk; Git does not back them up.
 
 ## Sync project configuration
 
-Run `scripts/tfvars-sync.sh` from the repository root to upload or download one
-configuration file at a time. Use `--file terraform.tfvars` (the default, so
-existing commands still work) or `--file backend.hcl`. Objects use
-`<platform>/<env>/<file>`; the default bucket is `terraform-state`.
+Run `scripts/tfvars-sync.sh` from the repository root to upload or download
+`backend.hcl`, `main.tf`, and `terraform.tfvars` by default. Other files, state,
+hidden files, and directories are not included by default. Symlinks are skipped
+without following them.
+Use `--file terraform.tfvars`, `--file backend.hcl`, or another relative file
+path to sync only that file. Objects use `<platform>/<env>/<relative-path>`;
+the default bucket is `terraform-state`.
 Omit `--env` to process every local project for that platform, including
-Git-ignored directories; specify `--env` to select one. Back up and restore both
-files for projects with remote state before managing them on another machine.
+Git-ignored directories; specify `--env` to select one. Downloads fetch the
+selected files directly, including files missing locally. Create the project
+directory and shared symlinks first when restoring on another machine.
+Syncing copies files without deleting local or
+remote files absent from the source.
 
 | Storage | CLI | Authentication |
 |---------|-----|----------------|
@@ -260,6 +266,7 @@ Its authentication is independent of Terraform's S3 backend credentials; see
 rtk proxy ./scripts/tfvars-sync.sh upload --platform vultr --env logic3579 --storage r2 --dry-run
 
 # After cf authentication, upload or download one environment.
+# With no --file, syncs only backend.hcl, main.tf and terraform.tfvars.
 rtk proxy ./scripts/tfvars-sync.sh upload --platform vultr --env logic3579 --storage r2
 rtk proxy ./scripts/tfvars-sync.sh download --platform vultr --env logic3579 --storage r2
 
@@ -271,12 +278,18 @@ rtk proxy ./scripts/tfvars-sync.sh download --platform vultr --env logic3579 --s
 rtk proxy ./scripts/tfvars-sync.sh upload --platform gcp --storage gcs --bucket my-tfvars-bucket
 ```
 
-Downloads replace the selected local file only after a successful transfer
+Dry runs print each selected file's transfer command without invoking storage
+CLIs or needing storage credentials. No Python or object listing is used.
+
+Downloads replace each local file only after a successful transfer
 through a temporary file; preserve local edits first. Failed downloads leave
-the existing configuration intact. Uploads skip missing selected files.
-The script does not sync Terraform state, and the sync bucket is independent
-of the backend being backed up. Restore credentials needed to access the sync
-bucket separately; a stored `backend.hcl` is a backup, not backend initialization.
+the existing configuration intact. Uploads skip missing selected files;
+downloads report a failure if a selected remote file is missing, while still
+attempting the other selected files. For Proxmox (which has no `backend.hcl`),
+download `main.tf` and `terraform.tfvars` separately with `--file`.
+The sync bucket is independent of the backend being backed up. Back up state
+separately. Restore credentials needed to access the sync bucket separately;
+a stored `backend.hcl` is a backup, not backend initialization.
 
 ## Resources covered
 

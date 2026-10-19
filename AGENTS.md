@@ -128,18 +128,18 @@ when needed to reproduce the project. See [README.md](README.md#local-projects-a
 
 ## State management & tfvars-sync.sh
 
-Back up both local configuration files manually or with separate sync commands.
+Back up both local configuration files manually or with the sync script.
 The script discovers local projects even when Git ignores them; pass `--env` to
 select a project explicitly.
 
-`scripts/tfvars-sync.sh upload|download --platform X --storage s3|r2|gcs [--env Y] [--file terraform.tfvars|backend.hcl]` syncs the selected configuration file to remote object storage. `--file` defaults to `terraform.tfvars` for compatibility. The default bucket is `terraform-state`. S3 uses `aws s3 cp`, R2 uses the official Cloudflare `cf r2 objects put/get` CLI, and GCS uses `gcloud storage cp`.
+`scripts/tfvars-sync.sh upload|download --platform X --storage s3|r2|gcs [--env Y] [--file PATH]` syncs only `backend.hcl`, `main.tf`, and `terraform.tfvars` by default. Other files, state, hidden files, and directories are excluded by default; symlink paths are skipped. `--file` selects one project-relative file instead. The default bucket is `terraform-state`. S3 uses `aws s3 cp`, R2 uses the official Cloudflare `cf r2 objects put/get` CLI, and GCS uses `gcloud storage cp`.
 
 - Invoke as `rtk proxy ./scripts/tfvars-sync.sh ...` from the repository root; the script resolves envs relative to its own location.
 - Omitting `--env` processes every local project for the platform. Downloads replace the selected local file on success.
-- Uploads skip missing selected files. The script does not sync state; the sync bucket is configured independently of the Terraform backend being backed up.
-- Object keys are `<platform>/<env>/<file>` for all three storage types. Use `--dry-run` to preview without transferring files; R2 previews need no credentials and do not invoke `cf`.
+- Uploads skip missing selected files. Downloads fetch selected files directly, even if absent locally; a missing remote file fails that project, but the remaining files and projects are still attempted. For Proxmox, download `main.tf` and `terraform.tfvars` separately with `--file` because there is no `backend.hcl`. No Python or remote listing is used. The sync bucket is configured independently of the Terraform backend being backed up.
+- Object keys are `<platform>/<env>/<relative-path>` for all three storage types. Use `--dry-run` to preview each transfer without transferring files or invoking storage CLIs. Syncing does not delete extra local or remote files.
 - S3 credentials fall back to the AWS default chain; GCS uses `GOOGLE_APPLICATION_CREDENTIALS` when supplied, otherwise the active gcloud account. R2 uses `cf auth login` or `CLOUDFLARE_API_TOKEN`; `CLOUDFLARE_ACCOUNT_ID` selects the account when needed. All downloads use a temporary file and replace the selected file only on success, preserving existing files on failure.
-- Back up and restore both files separately for remote-state projects. Sync-storage authentication must be available before downloading a backed-up `backend.hcl`.
+- Back up and restore both configuration files for remote-state projects, together by default or separately with `--file`. Sync-storage authentication must be available before downloading a backed-up `backend.hcl`.
 - `--endpoint` is for S3 only (ignored for GCS); R2 rejects it because `cf` handles API endpoints and does not use S3 access keys. Terraform's R2 S3 backend configuration is independent of this script's cf authentication.
 - GCP backend prefix convention is `gcp/<env>`; AWS/OpenStack/Vultr backend key convention is `<platform>/<env>/terraform.tfstate`. Copying local state to object storage is a backup, not remote backend configuration or state locking.
 - GCP `logic3579` is an exception: it uses the S3-compatible backend configuration from AWS `logic3579`, with key `gcp/logic3579/terraform.tfstate`. Backend credentials remain separate from Google provider authentication.
@@ -207,7 +207,7 @@ Entire resources are created with `count = <condition> ? 1 : 0` or `for_each = <
 
 ### Proxmox
 - Provider pinned `~> 0.104.0` — DO NOT BUMP. Network resource name is `proxmox_virtual_environment_network_linux_bridge` (will change when bumped)
-- State is local in the current configuration. Back up `terraform.tfstate` separately; `tfvars-sync.sh` syncs configuration files, not state. Shared backend adoption is a separate configuration/migration task.
+- State is local in the current configuration. Back up `terraform.tfstate` separately; the default files synced by `tfvars-sync.sh` do not include state. Shared backend adoption is a separate configuration/migration task.
 - API token auth is preferred; username/password and optional SSH configuration are available. Storage downloads expose IDs, but root compute currently receives `var.vms` directly rather than automatically resolving storage output names.
 
 ### OpenStack
