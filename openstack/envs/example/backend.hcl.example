@@ -1,7 +1,7 @@
 # Terraform s3 backend pointed at OpenStack Swift's S3-compatible API.
 #
-# Copy this file to backend.hcl in your env directory (e.g.,
-# openstack/envs/<env>/backend.hcl) and fill in the placeholders below.
+# Copy to openstack/envs/<project>/backend.hcl in your new project
+# and fill in the placeholders below.
 # All backend.hcl files are gitignored via the **/backend.hcl rule.
 #
 # Generate Swift S3 (EC2) credentials once with:

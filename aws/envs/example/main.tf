@@ -1,5 +1,5 @@
-# Dev/Test environment configuration
-# Provider and module configuration loaded from _shared
+# Example project configuration
+# Variable and output declarations are symlinked from _shared.
 
 terraform {
   required_version = "~> 1.5"

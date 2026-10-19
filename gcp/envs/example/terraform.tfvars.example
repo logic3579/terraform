@@ -1,7 +1,8 @@
-# Environment Configuration
-# Copy this file to terraform.tfvars and update with your actual values
+# Example project configuration
+# Copy the example entrypoint and symlinks into a new project directory first.
+# Copy this file to gcp/envs/<project>/terraform.tfvars and update values.
 
-env = "dev"  # Environment name: dev, test, uat, prod
+env = "dev"  # Environment name is independent of the directory name; no enum restriction
 
 labels = {
   organization = "my-org"          # Your organization name

@@ -2,31 +2,49 @@
 
 This directory contains Terraform configurations for managing GCP infrastructure across multiple environments.
 
-## Base environment (shared infrastructure)
+## Example project
 
-`envs/base/` manages shared infrastructure with `env = "base"`. Its local
-`terraform.tfvars` supplies the project, locations, and resource lists. Choose
-the appropriate locations before adding resources.
+`envs/example/` provides the reusable GCS-backed project template. Create a new
+project directory before supplying real inputs or running Terraform. From the
+repository root:
 
-Configure the gitignored `envs/base/backend.hcl` with your bucket and a unique prefix:
+```bash
+project=my-project
+rtk proxy mkdir "gcp/envs/$project"
+rtk proxy cp gcp/envs/example/main.tf "gcp/envs/$project/main.tf"
+rtk proxy ln -s ../../_shared/variables.tf "gcp/envs/$project/variables.tf"
+rtk proxy ln -s ../../_shared/outputs.tf "gcp/envs/$project/outputs.tf"
+rtk proxy cp gcp/envs/example/terraform.tfvars.example "gcp/envs/$project/terraform.tfvars"
+rtk proxy cp gcp/envs/example/backend.hcl.example "gcp/envs/$project/backend.hcl"
+```
+
+Edit the new project's tfvars: set `project_id`, `env`, `region`, `zone`, and
+resource lists, removing unneeded sample resources. Configure its gitignored
+`backend.hcl` with your existing state bucket and a unique prefix:
 
 ```hcl
 bucket = "<your-tfstate-bucket>"
-prefix = "gcp/<your-base-project-id>"
+prefix = "gcp/my-project"
 ```
 
 The bucket must already exist, and the Terraform identity needs access to it.
 Using it as a backend does not add the bucket to the managed `buckets` list.
 Both `terraform.tfvars` and `backend.hcl` are local, gitignored files and must be
-provided separately on another checkout. Keep the generated provider lockfile tracked.
+provided separately on another checkout. Preserve the local provider lockfile
+with project backups. See the [creation and restore workflow](../README.md#create-a-project-from-the-template)
+and [Git ignore rules](../README.md#git-ignore-rules).
 
 From the repository root:
 
 ```bash
-rtk proxy terraform -chdir=gcp/envs/base init -backend-config=backend.hcl
-rtk proxy terraform -chdir=gcp/envs/base validate
-rtk proxy terraform -chdir=gcp/envs/base plan
+rtk proxy gcloud auth application-default login
+rtk proxy terraform -chdir="gcp/envs/$project" init -backend-config=backend.hcl
+rtk proxy terraform -chdir="gcp/envs/$project" validate
+rtk proxy terraform -chdir="gcp/envs/$project" plan
 ```
+
+Review the plan, then run `rtk proxy terraform -chdir="gcp/envs/$project" apply`.
+Keep `example` as the source template; operate only from the new project.
 
 For browser authorization on another trusted computer, run
 `gcloud auth application-default login --no-browser` on the Terraform host,
@@ -52,9 +70,10 @@ The Terraform host still needs network access to Google authentication and API e
 
 ### Configure the Backend First
 
-The `dev` and `base` entrypoints use GCS. Follow these steps for those environments.
+The `example` entrypoint uses GCS. After creating a new directory as above,
+follow these steps for GCS-backed projects.
 The `logic3579` entrypoint uses S3-compatible R2; select the S3 section of
-`envs/backend.hcl.example` and use `key = "gcp/logic3579/terraform.tfstate"`.
+`envs/example/backend.hcl.example` and use `key = "gcp/logic3579/terraform.tfstate"`.
 In both cases, pass `-backend-config=backend.hcl` to init; Terraform does not
 automatically load this file.
 
@@ -70,9 +89,9 @@ automatically load this file.
 2. Create `backend.hcl` in each environment directory:
 
    ```hcl
-   # gcp/envs/dev/backend.hcl
+   # gcp/envs/my-project/backend.hcl
    bucket = "YOUR-TERRAFORM-STATE-BUCKET"
-   prefix = "gcp/dev"
+   prefix = "gcp/my-project"
    ```
 
 3. Initialize Terraform with backend config:
@@ -109,35 +128,37 @@ gcp/
 ├── templates/                   # Configuration templates
 │   └── cloud-init.yaml.tpl      # Cloud-init template for VM initialization
 └── envs/                        # Environment-specific configurations
-    ├── terraform.tfvars.example # Template for tfvars
-    ├── dev/                     # Dev environment (multi-VPC example)
+    ├── example/                 # Reusable project entrypoint (GCS)
     │   ├── main.tf              # Provider and module configuration
     │   ├── variables.tf         # → symlink to ../../_shared/variables.tf
     │   ├── outputs.tf           # → symlink to ../../_shared/outputs.tf
-    │   ├── backend.hcl          # Backend configuration
-    │   └── terraform.tfvars     # Environment-specific values (gitignored)
-    ├── base/                    # Shared infrastructure
-    │   └── ...
-    └── logic3579/               # logic3579 project configuration
+    │   ├── backend.hcl.example  # Tracked backend template
+    │   └── terraform.tfvars.example # Tracked input template
+    └── logic3579/               # Personal project configuration (S3/R2)
         └── ...
 ```
 
 ---
 
-## Environments
+## Projects
 
-| Environment | Directory       | Description                                  |
-| ----------- | --------------- | -------------------------------------------- |
-| `dev`       | `envs/dev/`     | Development environment (multi-VPC example)  |
-| `base`      | `envs/base/`    | Shared infrastructure                        |
-| `logic3579` | `envs/logic3579/` | logic3579 project configuration            |
+| Project     | Directory         | Description                        |
+| ----------- | ----------------- | ---------------------------------- |
+| `example`   | `envs/example/`   | Reusable example with GCS backend  |
+| `logic3579` | `envs/logic3579/` | Personal project with S3/R2 backend |
+
+Only these project directories are tracked. Other projects are local and
+gitignored. Recreate them from the matching entrypoint and shared symlinks,
+then restore backed-up
+`terraform.tfvars` and `backend.hcl` as described in the
+[manual backup guide](../README.md#local-projects-and-manual-backups).
 
 For `envs/logic3579/`, set `project_id = "logic3579"` in local, gitignored
-`terraform.tfvars`. Initial values can follow `base`: `env = "base"`,
+`terraform.tfvars`. Initial values can use `env = "base"`,
 `region = "asia-east2"`, and `zone = "asia-east2-a"`. Resource lists default
 to empty; the tracked entrypoint does not define project resources itself.
-The directory name identifies the project configuration; `env` must be one of
-`base`, `dev`, `test`, `uat`, or `prod`.
+The directory name identifies the project configuration; `env` is an independent
+string with no validation restrictions.
 
 This environment uses an S3-compatible backend with the same bucket, endpoint,
 and backend credentials as `aws/envs/logic3579/backend.hcl`, with
@@ -146,11 +167,15 @@ backend file into `gcp/envs/logic3579/backend.hcl` and update the key before
 running `terraform init -backend-config=backend.hcl`. Both local files are
 gitignored. GCP provider authentication uses Google credentials separately.
 
-Replicate `envs/dev/` to `envs/test/`, `envs/uat/`, etc. for additional environments — each one is a self-contained directory with its own `main.tf`, `backend.hcl`, and symlinks to `_shared/`.
+For additional projects, copy only `envs/example/main.tf` (or the S3/R2
+entrypoint above) and recreate the `_shared/` symlinks. Restore the project's
+backed-up input and backend files before init; preserve the existing state path.
+New projects need a unique backend prefix/key. Do not copy a working project's
+state, cache, or credentials into a new project.
 
 ### Multi-VPC Support
 
-The `dev` environment demonstrates multi-VPC management within a single Terraform configuration. This is useful when:
+The `example` entrypoint accepts multi-VPC inputs from `envs/example/terraform.tfvars.example`. This is useful when:
 
 - Multiple VPCs exist in the same GCP project
 - You want to manage several isolated networks together
@@ -587,7 +612,7 @@ runcmd:
 
 | Variable     | Type        | Description                                     |
 | ------------ | ----------- | ----------------------------------------------- |
-| `env`        | string      | Environment name: dev, test, uat, prod          |
+| `env`        | string      | Environment name (no validation restrictions) |
 | `labels`     | map(string) | Labels applied to all resources                 |
 | `project_id` | string      | GCP project ID                                  |
 | `region`     | string      | Default GCP region                              |
@@ -727,41 +752,44 @@ gcloud config get-value project
 ### Example Workflow
 
 ```bash
-# Working with DEV environment
-cd gcp/envs/dev
-gcloud config set project my-project-test
-terraform init -backend-config=backend.hcl
-terraform plan
-terraform apply
+# From the repository root, after creating/configuring the new project above
+rtk proxy terraform -chdir=gcp/envs/my-project init -backend-config=backend.hcl
+rtk proxy terraform -chdir=gcp/envs/my-project validate
+rtk proxy terraform -chdir=gcp/envs/my-project plan
 
-# Switching to PROD environment
-cd ../prod
-gcloud config set project my-company-prod
-terraform init -backend-config=backend.hcl
-terraform plan
-terraform apply
+# Switching to the personal project (after restoring its local files)
+rtk proxy terraform -chdir=gcp/envs/logic3579 init -backend-config=backend.hcl
+rtk proxy terraform -chdir=gcp/envs/logic3579 plan
 ```
 
 ---
 
-## Team Collaboration - tfvars Sync
+## Optional configuration Sync
 
-The repository-level [sync guide](../README.md#sync-terraformtfvars) documents
+For local projects, back up both `terraform.tfvars` and `backend.hcl`, manually
+or using separate `--file` sync commands;
+see the [backup workflow](../README.md#local-projects-and-manual-backups).
+
+The repository-level [sync guide](../README.md#sync-project-configuration) documents
 CLI selection, authentication, options, and overwrite behavior. The script
-syncs only `terraform.tfvars`; Terraform manages remote state separately.
+syncs `terraform.tfvars` by default; use `--file backend.hcl` to transfer backend
+configuration separately. Terraform manages remote state separately.
 
 Run from the repository root:
 
 ```bash
-# GCS: download tfvars for dev; add --dry-run to preview.
-rtk proxy ./scripts/tfvars-sync.sh download --platform gcp --env dev --storage gcs
+# GCS: restore tfvars into a recreated project; add --dry-run to preview.
+rtk proxy ./scripts/tfvars-sync.sh download --platform gcp --env my-project --storage gcs
 
 # R2: upload logic3579 tfvars after authenticating with cf.
 rtk proxy ./scripts/tfvars-sync.sh upload --platform gcp --env logic3579 --storage r2
+
+# R2: back up backend configuration for the same project.
+rtk proxy ./scripts/tfvars-sync.sh upload --platform gcp --env logic3579 --storage r2 --file backend.hcl
 ```
 
 Use `--bucket` to select the tfvars bucket; it is not read from `backend.hcl`.
-Object keys are `gcp/<env>/terraform.tfvars` for either storage. Preserve local
+Object keys are `gcp/<env>/<file>` for either storage. Preserve local
 edits before downloading, and coordinate changes with other users before upload.
 
 ---

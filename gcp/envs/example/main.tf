@@ -1,4 +1,4 @@
-# Base environment configuration for shared infrastructure.
+# Example project configuration
 # Variable and output declarations are symlinked from _shared.
 
 terraform {

@@ -1,13 +1,13 @@
 #!/bin/bash
-# Sync terraform.tfvars between an env directory and remote object storage:
+# Sync terraform.tfvars or backend.hcl between a local project and object storage:
 #   s3  — AWS S3  via `aws s3 cp`
 #   r2  — Cloudflare R2 via `cf r2 objects put/get`
 #   gcs — Google Cloud Storage via `gcloud storage cp`
 #
 # Remote object key is fixed by convention:
-#   s3://<bucket>/<platform>/<env>/terraform.tfvars   (s3)
-#   r2://<bucket>/<platform>/<env>/terraform.tfvars   (r2, display only)
-#   gs://<bucket>/<platform>/<env>/terraform.tfvars   (gcs)
+#   s3://<bucket>/<platform>/<env>/<file>   (s3)
+#   r2://<bucket>/<platform>/<env>/<file>   (r2, display only)
+#   gs://<bucket>/<platform>/<env>/<file>   (gcs)
 #
 # Auth:
 #   s3  : S3_ACCESS_KEY / S3_SECRET_ACCESS_KEY env vars (optional —
@@ -28,6 +28,7 @@ ACTION=""
 PLATFORM=""
 ENV=""
 STORAGE=""
+SYNC_FILE="terraform.tfvars"
 BUCKET="terraform-state"
 ENDPOINT=""
 DRY_RUN=false
@@ -46,7 +47,9 @@ Required:
   --storage  NAME                s3 | r2 | gcs
 
 Options:
-  --env      NAME                specific env (e.g. dev, prod); omit for all envs of the platform
+  --file     NAME                terraform.tfvars (default) | backend.hcl
+  --env      NAME                project directory (e.g. example, logic3579)
+                                 Omit for all local projects, including gitignored ones.
   --bucket   NAME                bucket name (default: terraform-state)
   --endpoint URL                 optional custom endpoint for --storage s3 only
                                  Not supported for r2; ignored for gcs.
@@ -54,9 +57,9 @@ Options:
   -h, --help                     show this help
 
 Remote object key:
-  s3://<bucket>/<platform>/<env>/terraform.tfvars   (s3)
-  r2://<bucket>/<platform>/<env>/terraform.tfvars   (r2, display only)
-  gs://<bucket>/<platform>/<env>/terraform.tfvars   (gcs)
+  s3://<bucket>/<platform>/<env>/<file>   (s3)
+  r2://<bucket>/<platform>/<env>/<file>   (r2, display only)
+  gs://<bucket>/<platform>/<env>/<file>   (gcs)
 
 Credentials:
   s3  : S3_ACCESS_KEY / S3_SECRET_ACCESS_KEY env vars (optional — falls back to AWS default chain)
@@ -66,12 +69,16 @@ Credentials:
         JSON key; takes precedence). Falls back to the active gcloud auth account.
 
 Examples:
-  # Upload one aws env tfvars to AWS S3 (uses AWS default credential chain)
-  $(basename "$0") upload --platform aws --storage s3 --env dev --bucket my-tfstate
+  # Upload one aws project's tfvars to AWS S3 (uses AWS default credential chain)
+  $(basename "$0") upload --platform aws --storage s3 --env example --bucket my-tfstate
 
   # Back up vultr tfvars to R2
   cf auth login
   $(basename "$0") upload --platform vultr --env logic3579 --storage r2
+
+  # Back up or restore the same project's backend configuration separately
+  $(basename "$0") upload --platform vultr --env logic3579 --storage r2 --file backend.hcl
+  $(basename "$0") download --platform vultr --env logic3579 --storage r2 --file backend.hcl
 
   # Download all proxmox envs from R2
   $(basename "$0") download --platform proxmox --storage r2
@@ -80,7 +87,7 @@ Examples:
   $(basename "$0") upload --platform gcp --storage gcs --bucket terraform-state
 
   # Preview without executing
-  $(basename "$0") upload --platform aws --storage s3 --env dev --dry-run
+  $(basename "$0") upload --platform aws --storage s3 --env example --dry-run
 EOF
   exit 1
 }
@@ -92,6 +99,12 @@ parse_args() {
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --file)
+        if [[ -z "${2:-}" || "${2:-}" == --* ]]; then
+          echo -e "${RED}[ERROR]${NC} --file requires terraform.tfvars or backend.hcl"
+          exit 1
+        fi
+        SYNC_FILE="$2"; shift 2 ;;
       --platform) PLATFORM="${2:-}"; shift 2 ;;
       --env)      ENV="${2:-}";      shift 2 ;;
       --storage)  STORAGE="${2:-}";  shift 2 ;;
@@ -114,6 +127,11 @@ parse_args() {
   if [[ -z "$BUCKET" ]]; then
     echo -e "${RED}[ERROR]${NC} --bucket must not be empty"
     usage
+  fi
+
+  if [[ "$SYNC_FILE" != "terraform.tfvars" && "$SYNC_FILE" != "backend.hcl" ]]; then
+    echo -e "${RED}[ERROR]${NC} --file must be terraform.tfvars or backend.hcl (got: '$SYNC_FILE')"
+    exit 1
   fi
 
   if [[ -z "$PLATFORM" ]]; then
@@ -146,9 +164,9 @@ parse_args() {
 compute_remote_uri() {
   local env="$1"
   case "$STORAGE" in
-    r2)  echo "r2://${BUCKET}/${PLATFORM}/${env}/terraform.tfvars" ;;
-    gcs) echo "gs://${BUCKET}/${PLATFORM}/${env}/terraform.tfvars" ;;
-    *)   echo "s3://${BUCKET}/${PLATFORM}/${env}/terraform.tfvars" ;;
+    r2)  echo "r2://${BUCKET}/${PLATFORM}/${env}/${SYNC_FILE}" ;;
+    gcs) echo "gs://${BUCKET}/${PLATFORM}/${env}/${SYNC_FILE}" ;;
+    *)   echo "s3://${BUCKET}/${PLATFORM}/${env}/${SYNC_FILE}" ;;
   esac
 }
 
@@ -189,20 +207,9 @@ run_cp() {
       if [[ "$ACTION" == "upload" ]]; then
         "${command_args[@]}"
       else
-        # cf get writes raw object bytes to stdout. Replace tfvars only after
-        # a successful download so API/auth errors cannot truncate the file.
-        local temp_file
-        if ! temp_file=$(mktemp "${dst}.download.XXXXXX"); then
-          echo -e "  ${RED}[ERROR]${NC} unable to create a temporary download file"
-          return 1
-        fi
-        if "${command_args[@]}" > "$temp_file"; then
-          if mv -- "$temp_file" "$dst"; then
-            return 0
-          fi
-        fi
-        rm -f -- "$temp_file"
-        return 1
+        # cf get writes raw object bytes to stdout; process_env supplies a
+        # temporary destination and replaces the local file only on success.
+        "${command_args[@]}" > "$dst"
       fi
       ;;
 
@@ -264,22 +271,40 @@ run_cp() {
 process_env() {
   local env="$1"
   local env_dir="$PROJECT_ROOT/$PLATFORM/envs/$env"
-  local local_file="$env_dir/terraform.tfvars"
-  local rel_local="$PLATFORM/envs/$env/terraform.tfvars"
+  local local_file="$env_dir/$SYNC_FILE"
+  local rel_local="$PLATFORM/envs/$env/$SYNC_FILE"
 
   local remote_uri
   remote_uri=$(compute_remote_uri "$env")
 
   if [[ "$ACTION" == "upload" ]]; then
     if [[ ! -f "$local_file" ]]; then
-      echo -e "${YELLOW}[SKIP]${NC} $env: no terraform.tfvars to upload"
+      echo -e "${YELLOW}[SKIP]${NC} $env: no $SYNC_FILE to upload"
       return 0
     fi
     echo -e "${GREEN}[UPLOAD]${NC} $env: $rel_local → $remote_uri"
     run_cp "$local_file" "$remote_uri"
   else
     echo -e "${GREEN}[DOWNLOAD]${NC} $env: $remote_uri → $rel_local"
-    run_cp "$remote_uri" "$local_file"
+    if $DRY_RUN; then
+      run_cp "$remote_uri" "$local_file"
+      return $?
+    fi
+
+    # Download into the same directory so a failed transfer leaves the existing
+    # configuration intact and a successful rename replaces it atomically.
+    local temp_file
+    if ! temp_file=$(mktemp "${local_file}.download.XXXXXX"); then
+      echo -e "  ${RED}[ERROR]${NC} unable to create a temporary download file"
+      return 1
+    fi
+    if run_cp "$remote_uri" "$temp_file"; then
+      if mv -- "$temp_file" "$local_file"; then
+        return 0
+      fi
+    fi
+    rm -f -- "$temp_file"
+    return 1
   fi
 }
 
@@ -321,7 +346,7 @@ main() {
   $DRY_RUN && dry_marker=" ${CYAN}[DRY-RUN]${NC}"
 
   echo "==================================================="
-  echo -e "tfvars sync — ${action_upper}  platform=${PLATFORM}  storage=${STORAGE}  bucket=${BUCKET}${dry_marker}"
+  echo -e "config sync — ${action_upper}  platform=${PLATFORM}  storage=${STORAGE}  bucket=${BUCKET}  file=${SYNC_FILE}${dry_marker}"
   echo "==================================================="
   echo
 

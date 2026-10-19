@@ -9,21 +9,31 @@ Five platforms sharing the same three-layer architecture:
 ```
 <platform>/modules/<name>/       # Reusable submodule: main.tf + variables.tf + outputs.tf + versions.tf
 <platform>/_shared/              # variables.tf, outputs.tf (symlinked into each env)
-<platform>/envs/<env>/           # One dir per env: provider + backend + root module call
+<platform>/envs/<project>/       # One dir per project: provider + backend + root module call
 <platform>/main.tf               # Root module — wires submodules
 ```
 
 **GCP** (8 modules), **AWS** (6), **Proxmox** (3), **OpenStack** (3), **Vultr** (2).
 
-| Platform | Modules and responsibilities | Tracked environments |
+| Platform | Modules and responsibilities | Tracked projects |
 |---|---|---|
-| GCP | `network` VPC/subnets/firewalls; `nat` routers/Cloud NAT; `iam` service accounts and memberships; `storage` buckets; `compute` VMs/disks/instance groups; `lb` instance-group ALB; `neg-lb` existing NEG-backed ALB; `gke` clusters/node pools | `dev`, `base`, `logic3579` |
-| AWS | `network` VPC/routing/SGs; `iam` roles/profiles/users; `compute` EC2/key pairs/EIPs; `rds` databases/passwords; `lambda` archives/functions/URLs; `budget` budgets/notifications | `dev`, `logic3579` |
-| Proxmox | `network` Linux bridges; `storage` image/ISO/template downloads; `compute` KVM VMs/cloud-init | `dev` |
-| OpenStack | `network` Neutron networks/routers/SGs/floating IPs; `storage` Cinder volumes; `compute` instances/keypairs | `dev` |
-| Vultr | `network` VPC/firewall groups/rules; `compute` instances/SSH keys/startup scripts | `logic3579` |
+| GCP | `network` VPC/subnets/firewalls; `nat` routers/Cloud NAT; `iam` service accounts and memberships; `storage` buckets; `compute` VMs/disks/instance groups; `lb` instance-group ALB; `neg-lb` existing NEG-backed ALB; `gke` clusters/node pools | `example`, `logic3579` |
+| AWS | `network` VPC/routing/SGs; `iam` roles/profiles/users; `compute` EC2/key pairs/EIPs; `rds` databases/passwords; `lambda` archives/functions/URLs; `budget` budgets/notifications | `example`, `logic3579` |
+| Proxmox | `network` Linux bridges; `storage` image/ISO/template downloads; `compute` KVM VMs/cloud-init | `example` |
+| OpenStack | `network` Neutron networks/routers/SGs/floating IPs; `storage` Cinder volumes; `compute` instances/keypairs | `example` |
+| Vultr | `network` VPC/firewall groups/rules; `compute` instances/SSH keys/startup scripts | `example`, `logic3579` |
 
 This repository consumes providers; it does not implement Terraform providers in Go.
+
+Only `envs/example/` (reusable example) and `envs/logic3579/` (personal project)
+may be tracked. Other project directories are local and gitignored.
+`envs/example/` contains the complete example entrypoint, shared symlinks,
+`terraform.tfvars.example`, and `backend.hcl.example` for remote-state platforms.
+Do not force-add ignored projects. Directory names do not set `var.env`.
+Use `example` only as a source template. Create a new project directory before
+writing real input/backend files or running Terraform; never initialize or
+apply a real project from `envs/example/`. Follow the workflow in
+[README.md](README.md#create-a-project-from-the-template).
 
 ## Critical: symlinks — do NOT edit in env dirs
 
@@ -31,12 +41,20 @@ Every `envs/<env>/variables.tf` and `envs/<env>/outputs.tf` is a **symlink** to 
 - `main.tf` (provider/backend/module call — NOT symlinked)
 - `terraform.tfvars` (gitignored)
 - `backend.hcl` (gitignored)
+- `terraform.tfvars.example` and `backend.hcl.example` (tracked templates in `example` only; Proxmox has no backend template)
 
 Edit shared files through `<platform>/_shared/`. Writing through a symlink may change its shared target; replacement-style edits may replace the link itself. Preserve both the shared contract and the links. `gcp/_shared/main.tf` and `providers.tf` are auxiliary templates, not the tracked environment entrypoints; the main template does not forward every current input.
 
 ## .gitignore — what's never committed
 
-`*.tfvars`, `*.tfvars.json`, `*.tfstate`, `*.tfstate.*`, `**/keys/`, `.terraform/`, `.cloudflare/` (local CLI cache/state), and **`**/backend.hcl`** (credentials). Generic `*.json` files are NOT ignored. Reference templates live directly in `<platform>/envs/`. Provider lockfiles (`.terraform.lock.hcl`) are tracked; preserve them. Saved plan files are not currently ignored, so do not commit them.
+`/*/envs/*/` ignores all platform project directories; the exceptions
+`!/*/envs/example/` and `!/*/envs/logic3579/` allow the template and personal
+projects. File-level secret/state/cache rules still apply inside those allowed
+directories. Other projects need no dedicated ignore entries. Existing tracked
+files are not untracked by adding ignore rules. See
+[README.md](README.md#git-ignore-rules).
+
+`*.tfvars`, `*.tfvars.json`, `*.tfstate`, `*.tfstate.*`, `**/keys/`, `.terraform/`, `.cloudflare/` (local CLI cache/state), and **`**/backend.hcl`** (credentials). Project directories other than `example` and `logic3579` are ignored in full. Generic `*.json` files outside ignored paths are NOT ignored. Reference templates live in `<platform>/envs/example/`. Provider lockfiles (`.terraform.lock.hcl`) in tracked projects are tracked; preserve them. Saved plan files are not currently ignored in tracked directories, so do not commit them.
 
 ## Per-platform operational commands
 
@@ -76,35 +94,52 @@ rtk proxy terraform validate
 
 For configuration validation without initializing remote state, use `rtk proxy terraform init -backend=false` in a clean temporary copy of the affected platform (preserve symlinks, omit credentials/state and `.terraform/`), then validate its env. This still downloads providers/modules; it does not switch an existing remote backend to local state. A plan needs the actual configured backend and authentication. Report which checks ran and any missing prerequisites; documentation-only edits need link/diff checks, not a cloud plan.
 
-## Adding a new environment
+## Adding or restoring a local project
 
 ```bash
-# From repository root; choose a tracked source env from the table above.
+# From repository root; new projects are local and gitignored.
 # Copy only configuration, never a working env's state/cache/credentials.
 rtk proxy mkdir <platform>/envs/<new-env>
-rtk proxy cp <platform>/envs/<source-env>/main.tf <platform>/envs/<new-env>/main.tf
+rtk proxy cp <platform>/envs/example/main.tf <platform>/envs/<new-env>/main.tf
 rtk proxy ln -s ../../_shared/variables.tf <platform>/envs/<new-env>/variables.tf
 rtk proxy ln -s ../../_shared/outputs.tf <platform>/envs/<new-env>/outputs.tf
-rtk proxy cp <platform>/envs/terraform.tfvars.example <platform>/envs/<new-env>/terraform.tfvars
+rtk proxy cp <platform>/envs/example/terraform.tfvars.example <platform>/envs/<new-env>/terraform.tfvars
 # Remote-backend platforms only: GCP, AWS, OpenStack, Vultr
-rtk proxy cp <platform>/envs/backend.hcl.example <platform>/envs/<new-env>/backend.hcl
+rtk proxy cp <platform>/envs/example/backend.hcl.example <platform>/envs/<new-env>/backend.hcl
 ```
 
-Set the new environment name, auth, and unique backend prefix/key before init. Vultr's source env is `logic3579`; it has no `dev` directory. Proxmox has no backend.hcl template.
+For a new project, set auth, input values, and a unique backend prefix/key before
+init. For an existing project, restore its backed-up `terraform.tfvars`
+and `backend.hcl` instead of creating new values; keep the original state path.
+All platforms have an `example` entrypoint. GCP's example uses GCS; use the
+`logic3579/main.tf` entrypoint for an S3/R2-backed GCP project. Proxmox has no
+backend.hcl template and requires a separate backup/restore of local state.
 
-For GCP, directory/project names are independent of `var.env`, which accepts
-only `base`, `dev`, `test`, `uat`, or `prod`. The `logic3579` project uses its
-own environment directory; do not add its project ID to the environment enum.
+For GCP, directory/project names are independent of `var.env`, which is a
+string with no validation restrictions.
+
+Back up `terraform.tfvars` and `backend.hcl` outside Git for every local project,
+manually or with `tfvars-sync.sh --file`, and restore both to the same project
+directory on another machine.
+Recreate `main.tf` and shared symlinks from the matching tracked entrypoint,
+restore provider authentication, and run init with the restored backend file.
+Back up any customized entrypoint, extra assets, and local provider lockfile too
+when needed to reproduce the project. See [README.md](README.md#local-projects-and-manual-backups).
 
 ## State management & tfvars-sync.sh
 
-`scripts/tfvars-sync.sh upload|download --platform X --storage s3|r2|gcs [--env Y]` syncs only `terraform.tfvars` to remote object storage. The default bucket is `terraform-state`. S3 uses `aws s3 cp`, R2 uses the official Cloudflare `cf r2 objects put/get` CLI, and GCS uses `gcloud storage cp`.
+Back up both local configuration files manually or with separate sync commands.
+The script discovers local projects even when Git ignores them; pass `--env` to
+select a project explicitly.
+
+`scripts/tfvars-sync.sh upload|download --platform X --storage s3|r2|gcs [--env Y] [--file terraform.tfvars|backend.hcl]` syncs the selected configuration file to remote object storage. `--file` defaults to `terraform.tfvars` for compatibility. The default bucket is `terraform-state`. S3 uses `aws s3 cp`, R2 uses the official Cloudflare `cf r2 objects put/get` CLI, and GCS uses `gcloud storage cp`.
 
 - Invoke as `rtk proxy ./scripts/tfvars-sync.sh ...` from the repository root; the script resolves envs relative to its own location.
-- Omitting `--env` processes every env for the platform. Downloads overwrite the local `terraform.tfvars`.
-- Uploads skip missing local tfvars. The script does not sync state or backend configuration; the sync bucket is configured independently of the Terraform backend.
-- Object keys are `<platform>/<env>/terraform.tfvars` for all three storage types. Use `--dry-run` to preview without transferring files; R2 previews need no credentials and do not invoke `cf`.
-- S3 credentials fall back to the AWS default chain; GCS uses `GOOGLE_APPLICATION_CREDENTIALS` when supplied, otherwise the active gcloud account. R2 uses `cf auth login` or `CLOUDFLARE_API_TOKEN`; `CLOUDFLARE_ACCOUNT_ID` selects the account when needed. R2 downloads use a temporary file and replace tfvars only on success.
+- Omitting `--env` processes every local project for the platform. Downloads replace the selected local file on success.
+- Uploads skip missing selected files. The script does not sync state; the sync bucket is configured independently of the Terraform backend being backed up.
+- Object keys are `<platform>/<env>/<file>` for all three storage types. Use `--dry-run` to preview without transferring files; R2 previews need no credentials and do not invoke `cf`.
+- S3 credentials fall back to the AWS default chain; GCS uses `GOOGLE_APPLICATION_CREDENTIALS` when supplied, otherwise the active gcloud account. R2 uses `cf auth login` or `CLOUDFLARE_API_TOKEN`; `CLOUDFLARE_ACCOUNT_ID` selects the account when needed. All downloads use a temporary file and replace the selected file only on success, preserving existing files on failure.
+- Back up and restore both files separately for remote-state projects. Sync-storage authentication must be available before downloading a backed-up `backend.hcl`.
 - `--endpoint` is for S3 only (ignored for GCS); R2 rejects it because `cf` handles API endpoints and does not use S3 access keys. Terraform's R2 S3 backend configuration is independent of this script's cf authentication.
 - GCP backend prefix convention is `gcp/<env>`; AWS/OpenStack/Vultr backend key convention is `<platform>/<env>/terraform.tfstate`. Copying local state to object storage is a backup, not remote backend configuration or state locking.
 - GCP `logic3579` is an exception: it uses the S3-compatible backend configuration from AWS `logic3579`, with key `gcp/logic3579/terraform.tfstate`. Backend credentials remain separate from Google provider authentication.
@@ -112,7 +147,7 @@ own environment directory; do not add its project ID to the environment enum.
 When changing backends, use `init -migrate-state` to move existing state, or
 `init -reconfigure` if there is no state to preserve. Changing the configuration
 alone does not migrate state. Keep local tfvars, backend files, state, and CLI
-caches out of commits. Usage examples are centralized in [README.md](README.md#sync-terraformtfvars).
+caches out of commits. Usage examples are centralized in [README.md](README.md#sync-project-configuration).
 
 ## Key Terraform patterns across all platforms
 
@@ -172,7 +207,7 @@ Entire resources are created with `count = <condition> ? 1 : 0` or `for_each = <
 
 ### Proxmox
 - Provider pinned `~> 0.104.0` — DO NOT BUMP. Network resource name is `proxmox_virtual_environment_network_linux_bridge` (will change when bumped)
-- State is local in the current configuration. Back up `terraform.tfstate` separately; `tfvars-sync.sh` only syncs tfvars. Shared backend adoption is a separate configuration/migration task.
+- State is local in the current configuration. Back up `terraform.tfstate` separately; `tfvars-sync.sh` syncs configuration files, not state. Shared backend adoption is a separate configuration/migration task.
 - API token auth is preferred; username/password and optional SSH configuration are available. Storage downloads expose IDs, but root compute currently receives `var.vms` directly rather than automatically resolving storage output names.
 
 ### OpenStack

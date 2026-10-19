@@ -1,6 +1,6 @@
-# Environment Configuration
-# Copy this file to your environment directory as terraform.tfvars
-# and update with your actual values.
+# Example project configuration
+# Copy the example entrypoint and symlinks into a new project directory first.
+# Copy this file to aws/envs/<project>/terraform.tfvars and update values.
 
 env    = "dev" # Environment name: dev, prod
 region = "us-east-1"

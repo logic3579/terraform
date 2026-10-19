@@ -15,10 +15,13 @@ aws/
 │   └── budget/        # AWS Budgets with email notifications
 ├── _shared/           # Shared variable/output declarations (symlinked by envs)
 ├── envs/              # Environment configurations
-│   ├── dev/           # Dev environment (replicate to test/uat/prod as needed)
-│   ├── logic3579/     # Example env using S3 backend pointed at Cloudflare R2
-│   ├── backend.hcl.example
-│   └── terraform.tfvars.example
+│   ├── example/       # Reusable example project (S3-compatible backend)
+│   │   ├── main.tf
+│   │   ├── variables.tf  # → ../../_shared/variables.tf
+│   │   ├── outputs.tf    # → ../../_shared/outputs.tf
+│   │   ├── backend.hcl.example
+│   │   └── terraform.tfvars.example
+│   └── logic3579/     # Personal project (Cloudflare R2 backend)
 ├── main.tf            # Root module — wires submodules together
 ├── variables.tf       # Full type definitions with validations
 ├── outputs.tf         # Forwards module outputs
@@ -31,32 +34,60 @@ aws/
 
 2. **Root module** (`main.tf`) — Wires modules together. Threads `module.network` subnet/SG ID maps into `compute` / `rds`, and `module.iam` instance-profile / role ARN maps into `compute` / `lambda`.
 
-3. **Environment configs** (`envs/<env>/`) — Provider, backend, and root module call. `variables.tf` and `outputs.tf` are **symlinks** to `_shared/` — do not edit them in env dirs. `envs/dev/` is the included example; copy it to `envs/test/`, `envs/prod/`, etc. as needed.
+3. **Project configs** (`envs/<project>/`) — Provider, backend, and root module call. `variables.tf` and `outputs.tf` are **symlinks** to `_shared/` — do not edit them in project dirs. Only `example` and `logic3579` are tracked. Create other projects locally by copying `example/main.tf` and recreating the symlinks; their directories are gitignored.
+
+Manually back up and restore each local project's `terraform.tfvars` and
+`backend.hcl` outside Git. On another machine, recreate the project entrypoint,
+restore both files and provider authentication, and initialize the same backend.
+See the [backup workflow](../README.md#local-projects-and-manual-backups).
+The directory name does not change the `env` value in tfvars.
 
 ## Usage
 
+Use `example` as a source template. From the repository root, create a new
+project directory and copy only its configuration:
+
 ```bash
-# Initialize (with S3 backend)
-cd aws/envs/dev
-terraform init -backend-config=backend.hcl
-
-# Or initialize with local state (no backend)
-terraform init -backend=false
-
-# Plan and apply
-terraform plan
-terraform apply
-
-# Validate and format
-terraform validate
-terraform fmt -check -recursive ../../
+project=my-project
+rtk proxy mkdir "aws/envs/$project"
+rtk proxy cp aws/envs/example/main.tf "aws/envs/$project/main.tf"
+rtk proxy ln -s ../../_shared/variables.tf "aws/envs/$project/variables.tf"
+rtk proxy ln -s ../../_shared/outputs.tf "aws/envs/$project/outputs.tf"
+rtk proxy cp aws/envs/example/terraform.tfvars.example "aws/envs/$project/terraform.tfvars"
+rtk proxy cp aws/envs/example/backend.hcl.example "aws/envs/$project/backend.hcl"
 ```
 
-The `aws/envs/` directory also includes `backend.hcl.example` — a template for
+Edit the new project's tfvars: set `env`, `region`, authentication such as
+`aws_profile`, and the required resource inputs; remove unneeded examples.
+The current example forwards only `vpcs` to the root module. Add the appropriate
+input forwarding in your new project's `module "aws"` block before managing
+IAM, EC2, RDS, Lambda, or budgets. The personal entrypoint demonstrates broader
+wiring but also omits `iam_users`. Back up a customized `main.tf` with your inputs.
+
+The `aws/envs/example/` directory includes `backend.hcl.example` — a template for
 pointing the S3 backend at **Cloudflare R2** (any S3-compatible store works
-the same way). Per-env `backend.hcl` files that embed R2 credentials should
-be added to `.gitignore`. `envs/logic3579/backend.hcl` is the live example
-and is already gitignored.
+the same way). All per-project `backend.hcl` files are already gitignored.
+`envs/logic3579/backend.hcl` is local personal configuration, supplied separately.
+
+Set a unique backend key such as `aws/my-project/terraform.tfstate` in the new
+project. The bucket must already exist. For native S3, replace the R2 settings
+with the AWS bucket region and authentication and remove R2-specific settings.
+Keep provider authentication separate from R2 backend credentials.
+
+For SSO, set the matching `aws_profile` in tfvars and log in before initialization.
+Continue from the repository root:
+
+```bash
+rtk proxy aws sso login --profile your-profile
+rtk proxy terraform -chdir="aws/envs/$project" init -backend-config=backend.hcl
+rtk proxy terraform -chdir="aws/envs/$project" validate
+rtk proxy terraform -chdir="aws/envs/$project" plan
+```
+
+Review the plan before `rtk proxy terraform -chdir="aws/envs/$project" apply`.
+Keep `example` as the source template. See the root
+[backup/restore workflow](../README.md#local-projects-and-manual-backups) and
+[Git ignore rules](../README.md#git-ignore-rules) for local projects.
 
 For SSO users on AWS CLI ≥ 2.27 (new `aws login` writing to `~/.aws/login/`),
 the Go SDK can't read that cache directly — bridge it via a `[profile terraform]`
@@ -220,7 +251,7 @@ Maps consumed by the root module to wire other modules:
 
 ## State backends
 
-- `envs/dev/` uses an S3 backend (placeholder bucket — set yours in `backend.hcl`).
+- Projects created from `envs/example/` use an S3 backend; the backend template targets R2. Set the new project's bucket, unique key, endpoint, and credentials before init.
 - `envs/logic3579/` uses an S3 backend pointed at **Cloudflare R2** via `endpoints.s3` + skip flags. The `backend.hcl` embeds R2 credentials directly (gitignored). No DynamoDB locking on R2 — Terraform 1.10+'s native S3 lockfile (`use_lockfile = true`) is the alternative.
 
 State key pattern: `aws/<env_name>/terraform.tfstate`.

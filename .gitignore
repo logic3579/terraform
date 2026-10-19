@@ -43,8 +43,14 @@ terraform.rc
 **/keys/
 
 # Per-env backend configs (may embed credentials / account identifiers).
-# Templates live next to each platform's envs/ as backend.hcl.example.
+# Tracked templates live in each platform's envs/example/backend.hcl.example.
 **/backend.hcl
+
+# Track only example and personal project directories under each platform.
+# The example project includes its tracked *.example configuration templates.
+/*/envs/*/
+!/*/envs/example/
+!/*/envs/logic3579/
 
 # OpenCode agent working directory
 .omo/

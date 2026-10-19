@@ -1,11 +1,6 @@
 variable "env" {
-  description = "Environment name (base for shared infrastructure, or dev, test, uat, prod)"
+  description = "Environment name"
   type        = string
-
-  validation {
-    condition     = contains(["base", "dev", "test", "uat", "prod"], var.env)
-    error_message = "Environment must be one of: base, dev, test, uat, prod."
-  }
 }
 
 variable "labels" {

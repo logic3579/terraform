@@ -1,5 +1,6 @@
-# Vultr environment configuration
-# Copy this file to envs/<env>/terraform.tfvars and update values.
+# Vultr example project configuration
+# Copy the example entrypoint and symlinks into a new project directory first.
+# Copy this file to vultr/envs/<project>/terraform.tfvars and update values.
 
 # ========================================
 # Provider authentication

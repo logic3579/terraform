@@ -1,6 +1,7 @@
-# Terraform backend examples for GCP environments.
+# Terraform backend examples for GCP projects.
 #
-# Choose ONE section below for gcp/envs/<env>/backend.hcl and fill in
+# Copy to gcp/envs/<project>/backend.hcl in your new project.
+# Choose ONE section below and fill in
 # its placeholders. Do not combine GCS and S3 attributes in the same file.
 # Match the backend type in that environment's main.tf, then run:
 #   terraform init -backend-config=backend.hcl
@@ -14,7 +15,7 @@
 #   export GOOGLE_APPLICATION_CREDENTIALS=<key>    # service account JSON key
 
 bucket = "<your-tfstate-bucket>" # e.g. "myproject-terraform-state"
-prefix = "gcp/<env>"            # state object prefix, e.g. "gcp/dev"
+prefix = "gcp/<env>"            # state object prefix, e.g. "gcp/example"
 
 # === Option 2: S3-compatible storage / Cloudflare R2 (commented example) ===
 # In main.tf's terraform block: backend "s3" {}

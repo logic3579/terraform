@@ -1,5 +1,5 @@
-# Dev environment configuration
-# Provider, backend, and module wiring for the dev env.
+# Example project configuration
+# Provider, backend, and module wiring for a local project.
 
 terraform {
   required_version = "~> 1.5"
